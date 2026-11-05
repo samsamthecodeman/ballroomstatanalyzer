@@ -1,164 +1,68 @@
 # Ballroom Stats Analyzer
 
-Explore a dancer's competition history using results from [Ballroom Comp Express](https://ballroomcompexpress.com/). Search by dancer ID, compare placements across competitions, analyze matchups, and export results from a browser dashboard or command-line tool.
+Explore your ballroom competition history, track progress, and compare results with other dancers.
 
-Built with Python, a lightweight HTTP server, and vanilla JavaScript. Run it locally or deploy it with Docker behind an HTTPS reverse proxy.
+**[Visit Ballroom Stats Analyzer →](https://bsa.sam-moran.com)**
+
+Ballroom Stats Analyzer is a website hosted and maintained by [Sam](https://github.com/samsamthecodeman). It uses results from [Ballroom Comp Express](https://ballroomcompexpress.com/) to turn a dancer's competition history into an interactive dashboard. This repository contains the source code for the website and its maintenance tools.
 
 ## Features
 
-- **Competition history:** event placements, wins, podiums, finals, average placement, and percentage of the field beaten.
-- **Performance trends:** competition-by-competition charts and breakdowns by category, style, dance, level, division, partner, and age group.
-- **Matchup analysis:** head-to-head comparisons by dancer or couple, plus opponents placed above and below you.
-- **Judging categories:** separate couple-judged, leader-judged, follower-judged, and solo events.
-- **Filters:** narrow results by category, style, level, division, and partner; optionally exclude uncontested events with exactly one entry.
-- **YCN points estimates:** role-specific calculations, event-by-event explanations, and configurable interpretations of ambiguous level names.
-- **Downloads:** CSV event data and PDF reports with summary statistics and paginated event tables.
-- **Persistent caching:** reuse previously downloaded results across searches and Docker container updates.
-- **Public hosting controls:** queued searches, request pacing, dancer-ID requirements, and per-visitor search limits.
-- **Windows deployment:** optional daily updates from GitHub through Task Scheduler.
+- **Competition history:** view placements, wins, podiums, finals, average placement, and percentage of the field beaten.
+- **Performance trends:** track results over time and compare statistics by category, style, dance, level, division, partner, and age group.
+- **Matchup analysis:** explore head-to-head comparisons by dancer or couple, plus opponents placed above and below you.
+- **Judging categories:** distinguish couple-judged, leader-judged, follower-judged, and solo events.
+- **Filters:** narrow results by category, style, level, division, and partner, and optionally exclude uncontested events.
+- **YCN points estimates:** review role-specific calculations, event-by-event explanations, and interpretations of ambiguous level names.
+- **Exports:** download event results as CSV or a formatted PDF report.
 
-## Quick start
+## Getting started
 
-### Run with Python
+1. Open **[bsa.sam-moran.com](https://bsa.sam-moran.com)**.
+2. Find your dancer ID on Comp Express: open a competition's results, select your name in the dancer selector, and copy the number after `aid=` in the URL.
+3. Enter your dancer ID on Ballroom Stats Analyzer. You can also supply your name to help identify the dancer.
+4. Select **Analyze**, then explore the charts, tables, and filters.
 
-Python **3.12** is recommended; the Docker image uses Python 3.12. Git is required to clone the repository.
+The website requires a dancer ID to keep searches focused and reduce traffic to Comp Express. The first search may take longer while results are downloaded; subsequent searches can reuse cached pages. If someone else is running an analysis, your search may wait in the queue.
 
-```bash
-git clone https://github.com/samsamthecodeman/ballroomstatanalyzer.git
-cd ballroomstatanalyzer
-python -m venv .venv
-```
+## Understanding your results
 
-Activate the virtual environment:
+### Filters and uncontested events
 
-```powershell
-# Windows PowerShell
-.\.venv\Scripts\Activate.ps1
-```
+Use the filters to focus on a particular category, style, level, division, or partner.
 
-```bash
-# macOS / Linux
-source .venv/bin/activate
-```
+**Exclude uncontested events** removes events with exactly one entry, whether that entry is a couple or an individual. Events with unknown entry counts remain visible. This setting applies to statistics, charts, event lists, exports, and the YCN section.
 
-Install dependencies and start the dashboard:
+The other dashboard filters do not affect YCN points, so filtering the main results does not hide relevant events from the points calculation.
 
-```bash
-python -m pip install -r requirements.txt
-python bce_web.py
-```
+### Dance breakdowns
 
-The app opens a browser automatically. Its default address is **http://localhost:8765**; local mode tries another port if that one is occupied. Stop the server with **Ctrl+C**.
+In **Where they're strongest → Dance**, compare event count, wins, finals rate, average placement, and field beaten for each dance.
 
-### Run with Docker
+A multi-dance event contributes its overall placement to each listed dance. These are event-level placements rather than separate marks for each dance.
 
-With Docker Desktop or Docker Engine running:
+### YCN points
 
-```bash
-docker build -t ballroom-stats-analyzer .
-docker run -d --name ballroom-stats-analyzer -p 127.0.0.1:8765:8765 -v ballroom-stats-cache:/data/cache ballroom-stats-analyzer
-```
+The YCN section estimates points using the rules implemented in the application. It separates leader and follower roles, explains how individual events counted, and lets you adjust ambiguous level names.
 
-Open **http://localhost:8765**. This binds access to the host's loopback interface and stores downloaded pages in a named Docker volume. The image runs in public mode, so searches require a dancer ID.
+Treat these totals as a reference when reviewing your competition history. They are not an official eligibility determination. LilacDB totals are not imported automatically and may include competitions outside Comp Express.
 
-If port 8765 is occupied, use `-p 127.0.0.1:8766:8765` and open port 8766 instead.
+## Exporting results
 
-## Using the dashboard
+After an analysis completes, select **Export CSV** or **Export PDF** beneath the dancer's name.
 
-1. Find your dancer ID on Comp Express: open a competition's results, select your name in the dancer selector, and copy the number after `aid=` in the URL.
-2. Enter the ID in the dashboard. You can also supply a name to help identify the dancer.
-3. Run the analysis, then use the filters and section tabs to explore the results.
-4. Choose **Export CSV** or **Export PDF** beneath the dancer's name to download matching events.
-
-Exports include **all events matching the active filters**, regardless of the on-screen row limit. The PDF contains summary statistics and an event table; it does not include the dashboard's YCN calculations or opponent-comparison tables. Exporting does not fetch more pages from Comp Express. Completed search results expire from server memory after approximately 30 minutes; rerun the search if an export reports that the results expired.
-
-**Exclude uncontested events** removes events with exactly one entry, whether that entry is a couple or an individual. Events with unknown entry counts remain visible. The setting also applies to exports and the YCN section; the other dashboard filters do not affect YCN points.
-
-In the **Dance** breakdown, a multi-dance event contributes its overall placement to each listed dance. These are event-level placements, not separate marks for each dance.
-
-## Command-line analysis
-
-Search by dancer ID:
-
-```bash
-python bce_analyze.py --aid 10062
-```
-
-Limit the competitions and write report files:
-
-```bash
-python bce_analyze.py --aid 10062 --cids 150-250 --out output/report
-```
-
-The output directory contains `events.csv`, `head_to_head.csv`, and `summary.json`. The CLI also supports partner filtering, approximate name matching, and an optional chart with `--plot` (requires `matplotlib`).
-
-See all available options:
-
-```bash
-python bce_analyze.py --help
-python bce_web.py --help
-```
-
-Prefer dancer IDs. A name-only search can inspect every event across the site and take hours on an empty cache. Public mode disables name-only searches unless explicitly enabled with `--allow-name-search`.
-
-## Hosting and configuration
-
-See [SETUP-WINDOWS.md](SETUP-WINDOWS.md) for the Windows hosting walkthrough. The supplied Compose configuration contains four services:
-
-| Service | Purpose |
+| Format | Contents |
 | --- | --- |
-| `app` | Dashboard and analysis server, listening on container port 8765 |
-| `nginx` | Optional bundled HTTPS reverse proxy on ports 80 and 443 |
-| `certbot` | Issues and renews certificates using Cloudflare DNS validation |
-| `ddns` | Optional DNS updater, enabled only through the `direct-hosting` profile |
+| CSV | Detailed event rows, including competition, judging category, style, level, partner, role, placement, entry count, and source URL |
+| PDF | Summary statistics and a paginated event table, with first-place results highlighted in green |
 
-Copy `.env.example` to `.env` and supply your own values before using Compose:
+Both formats include **all events matching your current filters**, regardless of the on-screen row limit. The PDF does not include the dashboard's YCN calculations or opponent-comparison tables.
 
-```powershell
-Copy-Item .env.example .env
-```
+Exports use the completed analysis and make no additional requests to Comp Express. Completed results expire from server memory after approximately 30 minutes; rerun the search if an export reports that the results expired.
 
-| Variable | Purpose |
-| --- | --- |
-| `DOMAIN` | Hostname used by the bundled proxy and certificate service |
-| `EMAIL` | Contact email for certificate issuance |
-| `CF_API_TOKEN` | Cloudflare token for certificate validation and optional DNS updates |
-| `CF_ZONE_ID` | Optional explicit Cloudflare zone ID for the DNS updater |
-| `DDNS_INTERVAL` | DNS update interval in seconds; defaults to 300 |
+## Data freshness and responsible use
 
-**Deployment-specific binding:** `docker-compose.yml` currently includes `100.83.246.24:8765:8765`, the original deployment's Tailscale address. Remove that mapping or replace it with an address assigned to your own host before running Compose elsewhere. The localhost mapping can remain.
-
-If you already use Nginx Proxy Manager or another reverse proxy, start only the app:
-
-```bash
-docker compose up -d --build --no-deps app
-```
-
-Forward to the app over **HTTP on port 8765** using an address the proxy can reach. Configure HTTPS on the public proxy. Public DNS must resolve to your public ingress; a Tailscale address alone is not reachable by visitors outside your tailnet. Leave the bundled DNS updater disabled when another service manages your public routing.
-
-For direct hosting with the bundled proxy, review the router, DNS, and certificate steps in the Windows guide. To explicitly include the optional DNS updater:
-
-```bash
-docker compose --profile direct-hosting up -d --build
-```
-
-The bundled certificate command accepts the Let's Encrypt Subscriber Agreement during initial issuance. Keep `.env` private; it is excluded from Git along with caches, generated reports, and temporary files.
-
-### Public-mode defaults
-
-| Setting | Default |
-| --- | --- |
-| Minimum interval between outbound request starts | 0.6 seconds, shared across workers |
-| Concurrent searches | 1, with other searches queued |
-| Search starts per visitor | 20 per hour |
-| Search starts across the application | 200 per hour |
-| Search identifier | Dancer ID required |
-
-These defaults apply when running with `--public`. Configure them with the arguments in `docker-compose.yml`, such as `--delay`, `--max-per-hour`, and `--max-total-per-hour`. Search limits count searches, not upstream pages. The local web app and CLI default to a 0.4-second request interval.
-
-## Caching and upstream traffic
-
-The application downloads results when a search needs them. Merely opening the dashboard, changing filters, or exporting completed results does not request additional Comp Express pages.
+The website downloads pages when an analysis needs them and shares its cache across searches. Opening the dashboard, changing filters, and exporting completed results do not request additional Comp Express pages.
 
 | Cached data | Rechecked on a search after |
 | --- | --- |
@@ -166,44 +70,35 @@ The application downloads results when a search needs them. Merely opening the d
 | Competition event-list pages | 24 hours |
 | Individual event results | Kept indefinitely |
 
-Caches live in `bce_cache/` for a normal local run and `/data/cache` in the Docker container. The named Docker volume preserves them when the app container is rebuilt. Individual event results may therefore remain stale if the source is corrected later; the CLI's `--refresh` option bypasses its cache.
+Corrections made to individual event results on Comp Express may therefore take manual intervention to appear here.
 
-First-time searches can still generate substantial traffic. At the public-mode default, continuous uncached downloads can approach 100 request starts per minute. Failed requests may be retried, and there is no separate hourly cap on upstream page requests. Coordinate public use with Comp Express and avoid repeated full-site scans.
+The website currently runs one analysis at a time, with other searches queued. Its configured defaults allow 20 search starts per visitor per hour and 200 across the website. Outbound request starts are spaced at least 0.6 seconds apart across download workers. These limits count searches, not the number of pages downloaded, and an uncached search can still read many pages.
 
-## Updates and automatic deployment
+Please avoid repeatedly starting the same analysis and use the cached results and exports where possible.
 
-To update an existing checkout manually:
+## Report an issue
 
-```bash
-git pull --ff-only origin main
-```
+Found an incorrect classification, missing result, or another problem? Open an [issue](https://github.com/samsamthecodeman/ballroomstatanalyzer/issues) with:
 
-If the pull succeeds, rebuild and replace the app:
+- The dancer ID and relevant Comp Express competition/event URLs or IDs.
+- What the website displayed and what you expected instead.
+- Steps to reproduce the issue and, if useful, a screenshot.
 
-```bash
-docker compose up -d --build --no-deps app
-docker compose ps app
-```
+For classification problems, include the full event title and whether the couple, leader, or follower was judged. Do not include private credentials or API tokens.
 
-For Windows, install the optional daily deployment task from the project folder:
+## Limitations
 
-```powershell
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\Install-AutoDeploy.ps1 -At 08:00
-```
+- Coverage depends on available Comp Express results and the pages included in the analysis.
+- Judging categories, roles, and levels may require interpretation, especially on older event layouts. Source-format changes can affect parsing.
+- Name-based comparisons may conflate different people with the same name or separate spelling variants.
+- Cached event pages may not reflect later source corrections.
+- Website restarts interrupt active searches. Availability depends on the maintained hosting infrastructure and the upstream results website.
 
-It checks `origin/main` daily at **8:00 a.m. in the PC's local time zone**. The user must be signed in and Docker Desktop must be running; Task Scheduler attempts missed runs when available. The updater:
+## Development and contributing
 
-- Skips uncommitted or untracked source changes and refuses divergent history.
-- Builds only when the deployed commit differs, then replaces only the app container and waits for its health check.
-- Keeps the local `.env` and cached results; an app restart interrupts active searches.
-- Writes logs and the last successful commit to `tmp/auto-deploy/`.
-- Retries unsuccessful deployments on the next scheduled run. Failed builds preserve the running container; failed health checks can require manual recovery.
+The website uses Python, a lightweight HTTP server, vanilla JavaScript, and ReportLab for PDF generation. The maintained Docker image uses Python 3.12.
 
-See the [automatic-update instructions](SETUP-WINDOWS.md#automatic-updates-from-github-optional) for logs, a check-only command, and how to disable the task.
-
-## Development and tests
-
-Install the app dependencies, then the PDF inspection dependency used by the tests:
+For code contributions, work on a branch and run the relevant checks before opening a pull request. In your development environment:
 
 ```bash
 python -m pip install -r requirements.txt
@@ -211,46 +106,37 @@ python -m pip install pypdf
 python -m unittest -v test_event_category test_exports test_partners test_autodeploy
 ```
 
-With Node.js installed, run the browser-logic checks:
+With Node.js installed, run the dashboard logic checks:
 
 ```bash
 node test_filters.cjs
 ```
 
-The tests cover judging categories, CSV/PDF downloads, filter behavior, dance breakdowns, and partner counting. Windows deployment integration tests use disposable local Git repositories and a fake Docker executable; they skip on other platforms and do not change the live application.
+The tests cover judging categories, exports, filters, dance breakdowns, and partner counting. Windows deployment tests use disposable local Git repositories and a fake Docker executable; they skip on other platforms and do not change the live website.
 
-### Project structure
+### Source layout
 
 ```text
-bce_analyze.py         Fetching, parsing, classification, analysis, and CLI
+bce_analyze.py         Fetching, parsing, classification, and analysis
 bce_web.py             HTTP server and embedded dashboard HTML/CSS/JavaScript
 bce_export.py          CSV and PDF generation
-bce_partners.py        Optional partner leaderboard (currently disabled)
-Dockerfile            Application image
-docker-compose.yml    Application and optional hosting services
-nginx/                Bundled reverse-proxy configuration
-ddns/                 Optional Cloudflare DNS updater
-scripts/              Windows deployment and Task Scheduler installation
+bce_partners.py        Preserved partner leaderboard implementation (disabled)
+Dockerfile            Website application image
+docker-compose.yml    Hosting service configuration
+nginx/                Reverse-proxy configuration
+ddns/                 DNS maintenance utility
+scripts/              Windows deployment and scheduling tools
 test_*.py             Python regression and integration tests
 test_filters.cjs      JavaScript dashboard checks
-SETUP-WINDOWS.md      Windows hosting and operations guide
 ```
 
-The optional "Most Dance Partners" feature is preserved in source but disabled. Its import, initialization, collection, route, startup scan, and browser invocation are commented out in `bce_web.py`.
+### Maintainer operations
 
-## Limitations
+Deployment files and the [Windows operations guide](SETUP-WINDOWS.md) document the infrastructure used to maintain the hosted website. They contain deployment-specific configuration.
 
-- Coverage depends on available Comp Express results and the pages included in a search.
-- Judging categories, roles, and levels may require interpretation, especially on older event layouts. Source-format changes can affect parsing.
-- YCN points are estimates based on the implemented rules and selected level mappings; they are not an official eligibility determination. LilacDB totals are not imported automatically.
-- Name-based comparisons may conflate different people with the same name or separate spelling variants.
-- The dashboard uses Python's built-in HTTP server. For public hosting, run it behind an HTTPS reverse proxy with the public-mode controls enabled.
+The production updater checks GitHub's `main` branch each morning at **8:00 a.m. Central**, builds changed code, and replaces the app container after checking its health. It skips uncommitted changes, preserves the local configuration and cached results, and records deployment logs in `tmp/auto-deploy/`.
 
-## Contributing
-
-Open an [issue](https://github.com/samsamthecodeman/ballroomstatanalyzer/issues) with a reproducible example, expected behavior, and relevant Comp Express competition/event URLs or IDs. Do not include API tokens or your `.env` file.
-
-For changes, create a branch, add regression coverage when appropriate, run the relevant tests, and open a pull request describing the behavior and validation.
+Credentials, caches, generated reports, and deployment logs are excluded from Git. The optional "Most Dance Partners" calculation remains in the source with its activation hooks commented out.
 
 ## License
 
