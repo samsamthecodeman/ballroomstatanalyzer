@@ -42,7 +42,7 @@ class CacheMaintainer:
         if self.stop.is_set():
             raise core.Cancelled()
 
-    def _get(self, url, refresh=False, max_age=None, post_data=None):
+    def _get(self, url, refresh=False, max_age=None, post_data=None, **options):
         self._yield()
         # Extra background pacing applies only to actual network work, not disk reads.
         key = url if post_data is None else url + "?__post=" + core.urlencode(sorted(post_data.items()))
@@ -54,13 +54,14 @@ class CacheMaintainer:
             self._yield()
             self._last_request = time.monotonic()
         kwargs = {"use_cache": not refresh, "max_age": max_age}
+        kwargs.update(options)
         if post_data is not None:
             kwargs["post_data"] = post_data
         body = self.fetcher.get(url, **kwargs)
         if body is None:
             miss = path.with_suffix(".miss")
             if not miss.exists() or miss.read_text().strip() not in ("400", "404", "410"):
-                raise ValueError("Comp Express is unavailable or declining requests; background downloads will retry in an hour.")
+                raise ValueError("The upstream results source is unavailable or declining requests; background downloads will retry in an hour.")
         return body
 
     def refresh_competition(self, cid, metadata, cycle_start, today, force=False):
@@ -156,7 +157,8 @@ class CacheMaintainer:
 
             def get(self, url, **kwargs):
                 return maintainer._get(url, refresh=not kwargs.get("use_cache", True),
-                                       max_age=kwargs.get("max_age"), post_data=kwargs.get("post_data"))
+                                       max_age=kwargs.get("max_age"), post_data=kwargs.get("post_data"),
+                                       **{key: kwargs[key] for key in ("cache_misses", "validate") if key in kwargs})
 
         for aid in self.store.profile_ids():
             self._yield()
@@ -177,6 +179,29 @@ class CacheMaintainer:
         self.log("Results cache: historical population / weekly refresh complete.")
         return True
 
+    def refresh_o2cm(self, slot):
+        if self.store.get_meta("o2cm_last_slot") == slot or self.store.get_meta("o2cm_retry_after", 0) > time.time():
+            return
+        worker = self
+
+        class Fetcher:
+            store = worker.store
+
+            def get(self, url, **kwargs):
+                return worker._get(url, **kwargs)
+
+        try:
+            import bce_o2cm
+            bce_o2cm.refresh_known(Fetcher(), progress=lambda *args: self._yield())
+            self.store.set_meta("o2cm_last_slot", slot)
+            self.store.set_meta("o2cm_refresh_status", {"state": "complete", "updated_at": time.time()})
+        except core.Cancelled:
+            raise
+        except Exception as exc:
+            self.log(f"O2CM refresh postponed: {exc}")
+            self.store.set_meta("o2cm_retry_after", time.time() + 3600)
+            self.store.set_meta("o2cm_refresh_status", {"state": "error", "error": str(exc), "updated_at": time.time()})
+
     def run(self):
         retry_after = 0
         while not self.stop.is_set():
@@ -188,6 +213,8 @@ class CacheMaintainer:
                     for cid in ids:
                         self.refresh_competition(int(cid), {}, time.time(), datetime.now(self.zone).date(), force=True)
                 slot = weekly_slot(datetime.now(self.zone)).isoformat()
+                # Each provider has an independent checkpoint and failure/backoff state.
+                self.refresh_o2cm(slot)
                 if time.time() >= retry_after and self.store.get_meta("last_complete_slot") != slot:
                     if not self.run_cycle():
                         retry_after = time.time() + 3600

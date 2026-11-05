@@ -11,7 +11,7 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install -r requirements.txt
 
-COPY bce_web.py bce_analyze.py bce_export.py bce_partners.py bce_store.py bce_cache.py ./
+COPY bce_web.py bce_analyze.py bce_export.py bce_partners.py bce_store.py bce_cache.py bce_o2cm.py ./
 
 # Run as an unprivileged user; saved pages live in /data/cache (a Docker volume)
 RUN useradd --system --uid 10001 --home-dir /data --shell /usr/sbin/nologin app \

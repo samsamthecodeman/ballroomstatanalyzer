@@ -27,6 +27,9 @@ class ResultsStore:
                 CREATE TABLE IF NOT EXISTS profiles (
                     aid INTEGER PRIMARY KEY, overview TEXT NOT NULL, comps TEXT NOT NULL, updated REAL NOT NULL);
                 CREATE TABLE IF NOT EXISTS metadata (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+                CREATE TABLE IF NOT EXISTS external_cache (
+                    provider TEXT, kind TEXT, id TEXT, data TEXT NOT NULL, updated REAL NOT NULL,
+                    PRIMARY KEY(provider,kind,id));
             """)
 
     @contextmanager
@@ -113,6 +116,21 @@ class ResultsStore:
         with self.connect() as db:
             row = db.execute("SELECT value FROM metadata WHERE key=?", (key,)).fetchone()
         return json.loads(row[0]) if row else default
+
+    def get_external(self, provider, kind, key):
+        with self.connect() as db:
+            row = db.execute("SELECT data,updated FROM external_cache WHERE provider=? AND kind=? AND id=?",
+                             (provider, kind, key)).fetchone()
+        return {"data": json.loads(row[0]), "updated": row[1]} if row else None
+
+    def put_external(self, provider, kind, key, data):
+        with self.connect() as db:
+            db.execute("INSERT OR REPLACE INTO external_cache VALUES (?,?,?,?,?)",
+                       (provider, kind, key, json.dumps(data, ensure_ascii=False), time.time()))
+
+    def external_keys(self, provider, kind):
+        with self.connect() as db:
+            return [row[0] for row in db.execute("SELECT id FROM external_cache WHERE provider=? AND kind=?", (provider, kind))]
 
     def set_meta(self, key, value):
         with self.connect() as db:

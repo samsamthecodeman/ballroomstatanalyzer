@@ -4,7 +4,7 @@ Explore your ballroom competition history, track progress, and compare results w
 
 **[Visit Ballroom Stats Analyzer →](https://bsa.sam-moran.com)**
 
-Ballroom Stats Analyzer uses results from [Ballroom Comp Express](https://ballroomcompexpress.com/) to turn a dancer's competition history into an interactive dashboard. This repository contains the source code for the website and its maintenance tools.
+Ballroom Stats Analyzer uses results from [Ballroom Comp Express](https://ballroomcompexpress.com/) and [O2CM](https://results.o2cm.com/) to turn a dancer's competition history into an interactive dashboard. This repository contains the source code for the website and its maintenance tools.
 
 ## Features
 
@@ -26,6 +26,16 @@ Ballroom Stats Analyzer uses results from [Ballroom Comp Express](https://ballro
 The website resolves selected names to dancer IDs to keep analyses focused and reduce traffic to Comp Express. A shared results index speeds up repeat searches. A first-time dancer lookup or results not yet cached may still need downloads. If someone else is running an analysis, your search may wait in the queue.
 
 ## Understanding your results
+
+### O2CM results
+
+Select **O2CM** in the results-source selector and enter the exact first and last name used at registration. Comp Express IDs do not apply to O2CM. Optional competition codes, such as `mit26`, and the partner filter can narrow a search.
+
+O2CM's public name-history search can include other people with the same name and may omit additional competitor records for double-entered dancers. Verify the returned competitions and partners. Results from the two providers are kept separate rather than automatically merging identities or counting the same competition twice.
+
+O2CM results include the published overall placements, tied places, field sizes, finals, and source scoresheet links. Cached competition pages are shared across name searches; known histories participate in weekly refresh, recent competitions are refreshed, and older competitions are retained after a final successful refresh at the 30-day cutoff. The date is the date published in O2CM's dancer history. Initial searches download only competitions in the requested history; a full O2CM historical crawl is not enabled.
+
+Leader/follower roles are unverified in this importer, so O2CM results do not currently contribute to YCN points. Ambiguous mixed/proficiency events are marked **Unclassified**, rather than guessed. CSV and PDF exports identify O2CM as the source. If O2CM is unavailable from the hosting server, searches report the problem or use an existing successful cache with a warning; failures do not replace valid cached data.
 
 ### Filters and uncontested events
 
@@ -110,7 +120,7 @@ For code contributions, work on a branch and run the relevant checks before open
 ```bash
 python -m pip install -r requirements.txt
 python -m pip install pypdf
-python -m unittest -v test_event_category test_exports test_partners test_cache test_autodeploy
+python -m unittest -v test_event_category test_exports test_partners test_cache test_o2cm test_autodeploy
 ```
 
 With Node.js installed, run the dashboard logic checks:
@@ -130,6 +140,7 @@ bce_web.py             HTTP server and embedded dashboard HTML/CSS/JavaScript
 bce_export.py          CSV and PDF generation
 bce_store.py           Shared SQLite results index and dancer search plans
 bce_cache.py           Historical population and weekly results maintenance
+bce_o2cm.py            O2CM name-history and competition-results importer
 bce_partners.py        Preserved partner leaderboard implementation (disabled)
 Dockerfile            Website application image
 docker-compose.yml    Hosting service configuration

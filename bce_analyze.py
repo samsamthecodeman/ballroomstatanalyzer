@@ -53,7 +53,7 @@ except ImportError:
 
 BASE = "https://ballroomcompexpress.com/"
 RESULTS_URL = urljoin(BASE, "results.php")
-USER_AGENT = "bce-analyzer/1.0 (personal results analysis)"
+USER_AGENT = "Mozilla/5.0 (compatible; BallroomStatsAnalyzer/1.0; +https://bsa.sam-moran.com)"
 LIST_MAX_AGE = 7 * 86400   # lists of comps and a dancer's comps: re-check weekly
 COMP_MAX_AGE = 7 * 86400   # recent/undated event lists: re-check weekly
 # Event results don't change once posted, so event pages are kept indefinitely.
@@ -71,6 +71,7 @@ class Fetcher:
         self.timeout = timeout
         self.session = requests.Session()
         self.session.headers["User-Agent"] = USER_AGENT
+        self.session.headers["Accept"] = "text/html,application/json;q=0.9,*/*;q=0.8"
         self._lock = threading.Lock()
         self._last = 0.0
         self.network_hits = 0
@@ -81,7 +82,7 @@ class Fetcher:
         return self.cache_dir / (hashlib.sha1(url.encode()).hexdigest() + ".html")
 
     def get(self, url: str, use_cache: bool = True, max_age: float | None = None,
-            post_data: dict | None = None) -> str | None:
+            post_data: dict | None = None, cache_misses: bool = True, validate=None) -> str | None:
         """Fetch a page, using the saved copy unless it's older than max_age seconds (None = keep forever)."""
         path = self._path(url if post_data is None else url + "?__post=" + urlencode(sorted(post_data.items())))
         miss = path.with_suffix(".miss")
@@ -91,8 +92,10 @@ class Fetcher:
 
         if use_cache and not self.refresh:
             if fresh(path):
-                return path.read_text(encoding="utf-8", errors="replace")
-            if fresh(miss):
+                body = path.read_text(encoding="utf-8", errors="replace")
+                if validate is None or validate(body):
+                    return body
+            if cache_misses and fresh(miss):
                 return None
         for attempt in range(3):
             with self._lock:  # global rate limit shared by all worker threads
@@ -108,6 +111,8 @@ class Fetcher:
                 continue
             self.network_hits += 1
             if resp.status_code == 200:
+                if validate is not None and not validate(resp.text):
+                    return None
                 # Readers always see a complete page, even during a background refresh.
                 with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", dir=self.cache_dir, delete=False) as f:
                     f.write(resp.text)
@@ -119,7 +124,8 @@ class Fetcher:
                     temporary.unlink(missing_ok=True)
                 return resp.text
             if resp.status_code in (400, 401, 403, 404, 410):
-                miss.write_text(str(resp.status_code))
+                if cache_misses:
+                    miss.write_text(str(resp.status_code))
                 return None
             time.sleep(2 * (attempt + 1))  # 429 / 5xx: back off and retry
         return None
@@ -750,6 +756,7 @@ class EventRecord:
     made_final: bool
     percentile: float | None
     url: str
+    source: str = "bce"
 
 
 def person_matches(target_n: str, person_n: str, fuzzy: float | None) -> bool:

@@ -126,20 +126,28 @@ def run_job(job_id: str, job: dict, params: dict) -> None:
                     QUEUE.remove(job_id)
         job.update(stage="start", message="Looking up saved results...")
         cids = None
-        if params.get("cids"):
+        if params.get("cids") and params.get("source", "bce") == "bce":
             try:
                 cids = core.parse_cids(params["cids"])
             except ValueError:
                 job.update(state="error", error="Comp ids should look like 150-250 or 11,56,169.")
                 return
-        data = core.collect(
-            params.get("name") or "", FETCHER,
-            fuzzy=0.88 if params.get("fuzzy") else None,
-            partner=params.get("partner") or None,
-            cids=cids, aid=params.get("aid"),
-            workers=4, progress=prog)
+        if params.get("source") == "o2cm":
+            import bce_o2cm
+            data = bce_o2cm.collect(params["first"], params["last"], FETCHER,
+                partner=params.get("partner") or None, competitions=params.get("o2_comps"), progress=prog)
+        else:
+            data = core.collect(
+                params.get("name") or "", FETCHER,
+                fuzzy=0.88 if params.get("fuzzy") else None,
+                partner=params.get("partner") or None,
+                cids=cids, aid=params.get("aid"),
+                workers=4, progress=prog)
     except core.Cancelled:
         job["state"] = "cancelled"
+        return
+    except ValueError as exc:
+        job.update(state="error", error=str(exc))
         return
     except Exception as exc:  # surface anything unexpected to the page
         traceback.print_exc()
@@ -166,6 +174,8 @@ def run_job(job_id: str, job: dict, params: dict) -> None:
         "status": data["status"],
         "name": data.get("name") or params.get("name") or "",
         "aid": params.get("aid"),
+        "source": params.get("source", "bce"),
+        "warnings": data.get("warnings", []),
         "alternatives": data.get("alternatives", []),
         "matched_as": sorted(data["spellings"]),
         "suggestions": data["suggestions"],
@@ -307,13 +317,26 @@ class Handler(BaseHTTPRequestHandler):
             cleanup_jobs()
             name = str(params.get("name") or "").strip()[:100]
             aid = str(params.get("aid") or "").strip()[:12]
+            source = params.get("source", "bce")
+            if source not in ("bce", "o2cm"):
+                return self._send(400, {"error": "Choose Comp Express or O2CM."})
             params["partner"] = str(params.get("partner") or "").strip()[:100]
             params["cids"] = str(params.get("cids") or "").strip()[:200]
-            if name.isdigit() and not aid:
+            if source == "o2cm":
+                first = str(params.get("first") or "").strip()[:80]
+                last = str(params.get("last") or "").strip()[:80]
+                if not first or not last:
+                    return self._send(400, {"error": "Enter the exact O2CM first name and last name."})
+                codes = [part.strip().lower() for part in params["cids"].split(",") if part.strip()]
+                if any(not re.fullmatch(r"[a-z0-9_-]{2,30}", code) for code in codes):
+                    return self._send(400, {"error": "O2CM competition codes are comma-separated, for example mit26, big23."})
+                params.update(first=first, last=last, o2_comps=codes or None)
+                name, aid = f"{first} {last}", ""
+            if source == "bce" and name.isdigit() and not aid:
                 name, aid = "", name
-            if aid and not aid.isdigit():
+            if source == "bce" and aid and not aid.isdigit():
                 return self._send(400, {"error": "A dancer ID is a number, like 10062."})
-            if CONFIG["require_id"] and not aid:
+            if source == "bce" and CONFIG["require_id"] and not aid:
                 return self._send(400, {"error": "This site searches by dancer ID. Add the dancer’s ID; the box explains how to find it."})
             if not core.norm(name) and not aid:
                 return self._send(400, {"error": "Type a dancer’s name or dancer ID first."})
@@ -594,6 +617,7 @@ svg.chart .dot:hover, svg.chart .dot:focus { fill: var(--red); stroke: var(--red
 <header class="bar"><div class="wrap">
   <div class="brand">Ballroom Stats Analyzer</div>
   <form class="search" id="searchForm">
+    <select id="source" aria-label="Results source"><option value="bce">Comp Express</option><option value="o2cm">O2CM</option></select>
     <input type="text" id="name" placeholder="Search dancer by name" aria-label="Search dancer by name" aria-describedby="dancerLookupStatus" list="dancerSuggestions" autocomplete="off">
     <datalist id="dancerSuggestions"></datalist>
     <input type="text" id="aid" class="aid" placeholder="Dancer ID" aria-label="Dancer ID (filled when you select a name)" inputmode="numeric" autocomplete="off">
@@ -602,7 +626,7 @@ svg.chart .dot:hover, svg.chart .dot:focus { fill: var(--red); stroke: var(--red
       <div class="panel">
         <label class="check"><input type="checkbox" id="fuzzy"> <span>Match similar spellings<br><span class="hint">Finds “Jon” when you type “John”.</span></span></label>
         <label>Only with partner<input type="text" id="partner" placeholder="Optional"></label>
-        <label>Comp ids to scan<input type="text" id="cids" placeholder="All, or e.g. 150-250"></label>
+        <label><span id="competitionFilterLabel">Comp ids to scan</span><input type="text" id="cids" placeholder="All, or e.g. 150-250"></label>
       </div>
     </details>
     <button class="btn" id="goBtn" type="submit">Analyze</button>
@@ -614,7 +638,7 @@ svg.chart .dot:hover, svg.chart .dot:focus { fill: var(--red); stroke: var(--red
   <div id="emptyView" class="empty grid">
     <h1>Every heat, every final, every rival.</h1>
     <div class="intro">
-      <p>See how any dancer on ballroomcompexpress.com has placed over time and against everyone they’ve shared a floor with.</p>
+      <p>Explore competition results from Ballroom Comp Express and O2CM, including placements over time and the dancers they’ve shared a floor with.</p>
       <p id="idNote">Start typing a dancer’s name and choose a match to fill their ID automatically. You can also paste a dancer ID from a Comp Express results URL (the number after <code>aid=</code>).</p>
       <p id="nameOnlyNote" class="note">A name on its own works too, but the site doesn’t list who danced where, so the first name search reads every event on the site and can take a few hours. Pages are saved on your computer, so searching again is quick.</p>
       <p id="partnerJoke" class="partner-joke hidden" title="Distinct partners counted by name in cached event results, including other entrants. Not a ranking of the entire Comp Express website."><span id="partnerLeader"></span></p>
@@ -633,6 +657,7 @@ svg.chart .dot:hover, svg.chart .dot:focus { fill: var(--red); stroke: var(--red
     <div class="who">
       <h1 id="whoName"></h1>
       <p class="sub" id="whoSub"></p>
+      <p class="note hidden" id="sourceNotice"></p>
       <p class="sub alt hidden" id="whoAlt"></p>
       <div class="exports">
         <button class="btn quiet" id="exportCsv" type="button">Export CSV</button>
@@ -878,6 +903,7 @@ fetch("/api/config").then((r) => r.json()).then((c) => {
 }).catch(() => {});
 
 // ---------------- Search & progress ----------------
+const selectedSource = () => $("source").value;
 const dancerLookup = {matches: new Map(), selectedName: "", timer: null, sequence: 0};
 function chooseDancer(dancer) {
   $("name").value = dancer.name;
@@ -914,6 +940,7 @@ async function lookupDancers(query) {
   }
 }
 $("name").addEventListener("input", () => {
+  if (selectedSource() !== "bce") return;
   clearTimeout(dancerLookup.timer);
   const value = $("name").value.trim();
   const selected = dancerLookup.matches.get(value);
@@ -931,14 +958,38 @@ $("name").addEventListener("input", () => {
   }
 });
 $("aid").addEventListener("input", () => { dancerLookup.selectedName = ""; });
+$("source").addEventListener("change", () => {
+  const o2cm = selectedSource() === "o2cm";
+  ++dancerLookup.sequence; clearTimeout(dancerLookup.timer);
+  dancerLookup.selectedName = ""; dancerLookup.matches.clear();
+  $("dancerSuggestions").replaceChildren();
+  $("name").value = ""; $("aid").value = "";
+  $("name").placeholder = o2cm ? "Exact first name" : "Search dancer by name";
+  $("name").setAttribute("aria-label", o2cm ? "O2CM first name" : "Search dancer by name");
+  $("name").setAttribute("list", o2cm ? "" : "dancerSuggestions");
+  $("aid").placeholder = o2cm ? "Exact last name" : "Dancer ID";
+  $("aid").setAttribute("aria-label", o2cm ? "O2CM last name" : "Dancer ID (filled when you select a name)");
+  $("aid").inputMode = o2cm ? "text" : "numeric";
+  $("fuzzy").disabled = o2cm;
+  $("dancerLookupStatus").textContent = o2cm
+    ? "O2CM searches exact names. Check partners and competitions for same-name matches; profiles are not automatically merged."
+    : "Type at least 3 characters and choose a dancer, or enter a dancer ID.";
+  $("cids").placeholder = o2cm ? "All, or mit26, big23" : "All, or e.g. 150-250";
+  $("competitionFilterLabel").textContent = o2cm ? "O2CM competition codes" : "Comp ids to scan";
+  $("idNote").textContent = o2cm
+    ? "Choose O2CM and enter the exact first and last name used at registration. Check the returned partners and competitions to confirm the matches are yours."
+    : "Start typing a dancer’s name and choose a match to fill their ID automatically. You can also enter a dancer ID directly.";
+});
 
 $("searchForm").addEventListener("submit", async (e) => {
   e.preventDefault();
   let name = $("name").value.trim(), aid = $("aid").value.trim();
-  if (/^\d+$/.test(name) && !aid) { aid = name; name = ""; $("name").value = ""; $("aid").value = aid; }
+  const source = selectedSource(), first = name, last = aid;
+  if (source === "o2cm" && (!first || !last)) return fail("Enter the exact O2CM first name and last name.");
+  if (source === "bce" && /^\d+$/.test(name) && !aid) { aid = name; name = ""; $("name").value = ""; $("aid").value = aid; }
   if (!name && !aid) { $("name").focus(); return; }
-  if (aid && !/^\d+$/.test(aid)) return fail("A dancer ID is a number, like 10062.");
-  if (state.requireId && !aid) {
+  if (source === "bce" && aid && !/^\d+$/.test(aid)) return fail("A dancer ID is a number, like 10062.");
+  if (source === "bce" && state.requireId && !aid) {
     clearTimeout(dancerLookup.timer);
     $("goBtn").disabled = true;
     const matches = await lookupDancers(name);
@@ -953,12 +1004,12 @@ $("searchForm").addEventListener("submit", async (e) => {
   setStatus("Starting…", 0);
   try {
     const res = await fetch("/api/start", {method: "POST", headers: {"Content-Type": "application/json", "X-Visitor": VISITOR_ID},
-      body: JSON.stringify({name, aid, fuzzy: $("fuzzy").checked,
+      body: JSON.stringify({source, first, last, name, aid: source === "bce" ? aid : "", fuzzy: $("fuzzy").checked,
                             partner: $("partner").value.trim(), cids: $("cids").value.trim()})});
     const j = await res.json();
     if (!res.ok) throw new Error(j.error || "The search didn’t start.");
     state.jobId = j.id;
-    state.slowSearch = !aid;
+    state.slowSearch = source === "bce" && !aid;
     poll();
   } catch (err) {
     fail(err.message.includes("fetch") ? "The local server isn’t running. Start it with: python bce_web.py" : err.message);
@@ -1014,6 +1065,7 @@ function show(id) {
 }
 
 function handleResult(res) {
+  if (res.status === "no_o2_results") return fail("No O2CM results matched that exact name and filters. Check the spelling, partner, and competition codes.");
   if (res.status === "bad_aid") return fail(`Couldn’t open the results page for dancer ID ${res.aid}. Check the number and try again.`);
   if (res.status === "no_aid_comps") return fail(`Dancer ID ${res.aid} has no competition results on the site${$("cids").value.trim() ? " in the comp ids you entered" : ""}. Check the number.`);
   if (res.status === "no_comps") return fail("Couldn’t load any competition results. Check your internet connection and try again.");
@@ -1023,6 +1075,8 @@ function handleResult(res) {
   }
   res.events.forEach((e, i) => { e.order = i; });
   state.data = res;
+  $("sourceNotice").textContent = (res.warnings || []).join(" ");
+  $("sourceNotice").classList.toggle("hidden", !(res.warnings || []).length);
   state.filters = {style: "", level: "", category: "", division: "", partner: "", excludeUncontested: false, excludeThreeCouplePodiums: false};
   state.openOpp = null;
   state.rivOpen = null;
@@ -1143,6 +1197,7 @@ function render() {
   const span = dates.length ? `, ${fmtDate(dates[0])} to ${fmtDate(dates[dates.length - 1])}` : "";
   const alias = d.matched_as.filter((m) => norm(m) !== norm(d.name));
   $("whoSub").textContent = `${comps.size} comp${comps.size === 1 ? "" : "s"}${span}.` +
+    (d.source === "o2cm" ? " Source: O2CM." : " Source: Ballroom Comp Express.") +
     (alias.length ? ` Listed as ${alias.join(", ")}.` : "") +
     (isFiltered() ? " Filters are on." : "");
   renderMarks(evs);
@@ -1463,7 +1518,7 @@ function renderYcn() {
   const all = state.data.events.filter(passesEventExclusions);
   const roles = ["Leader", "Follower"].filter((r) => all.some((e) => e.role === r));
   if (!roles.length) {
-    $("ycnTable").innerHTML = `<p class="note" style="margin:10px">No couple events to count.</p>`;
+    $("ycnTable").innerHTML = `<p class="note" style="margin:10px">${all.some((e) => e.source === "o2cm") ? "YCN points are unavailable for O2CM results because leader/follower roles are unverified." : "No couple events to count."}</p>`;
     for (const id of ["ycnRoles", "ycnEvents", "ycnLevels", "ycnLilac"]) $(id).innerHTML = "";
     $("ycnLevelsSummary").textContent = "Level names (none need checking)";
     document.querySelectorAll(".ycn-legend").forEach((node) => node.remove());

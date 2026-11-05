@@ -10,6 +10,7 @@ from pathlib import Path
 FILTERS = ("style", "level", "category", "division", "partner")
 EVENT_EXCLUSIONS = ("excludeUncontested", "excludeThreeCouplePodiums")
 CSV_COLUMNS = (
+    ("Source", "source"),
     ("Date", "date"), ("Competition", "comp"), ("Event", "event"),
     ("Judging category", "category"), ("Division", "division"), ("Age", "age"),
     ("Style", "style"), ("Level", "level"), ("Dances", "dances"),
@@ -53,6 +54,8 @@ def csv_report(events):
         row = []
         for _, key in CSV_COLUMNS:
             value = event.get(key)
+            if key == "source":
+                value = "O2CM" if value == "o2cm" else "Ballroom Comp Express"
             if isinstance(value, list):
                 value = "; ".join(value)
             elif isinstance(value, bool):
@@ -98,15 +101,19 @@ def pdf_report(result, events, filters):
                             topMargin=36, bottomMargin=38, title=f"{result.get('name', '')} - Results",
                             author="Ballroom Stats Analyzer")
     generated = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
+    o2cm = result.get("source") == "o2cm"
+    source_label = "results.o2cm.com" if o2cm else "ballroomcompexpress.com"
     scope = "; ".join("Uncontested events: excluded" if key == "excludeUncontested" else
                       "Top-3 finishes in 3-couple events: excluded" if key == "excludeThreeCouplePodiums" else
                       f"{key.title()}: {value}" for key, value in filters.items() if value) or "All search results"
     dates = sorted(e["date"] for e in events if e.get("date"))
     story = [p("BALLROOM STATS ANALYZER"), p(result.get("name") or "Dancer results", "ReportTitle"),
-             p(f"Dancer ID: {result.get('aid') or 'Not specified'} | Generated {generated}"),
+             p(("Source: O2CM | Exact-name search" if o2cm else f"Dancer ID: {result.get('aid') or 'Not specified'}") + f" | Generated {generated}"),
              p(f"Scope: {scope}"),
              p(f"{len(events)} events across {len({e['cid'] for e in events})} competitions" +
                (f" | {dates[0]} to {dates[-1]}" if dates else "")), Spacer(1, 9)]
+    if result.get("warnings"):
+        story.append(p(" ".join(result["warnings"])))
     placed = [e["place"] for e in events if e.get("place") is not None]
     metrics = [("EVENTS", str(len(events))), ("FIRST PLACES", str(placed.count(1))),
                ("PODIUMS", str(sum(v <= 3 for v in placed))),
@@ -147,7 +154,7 @@ def pdf_report(result, events, filters):
     def footer(canvas, document):
         canvas.setFont("BCEReport", 7)
         canvas.setFillColor(colors.HexColor("#555555"))
-        canvas.drawString(36, 22, "Source: ballroomcompexpress.com | Ballroom Stats Analyzer")
+        canvas.drawString(36, 22, f"Source: {source_label} | Ballroom Stats Analyzer")
         canvas.drawRightString(landscape(A4)[0] - 36, 22, f"Page {document.page}")
 
     doc.build(story, onFirstPage=footer, onLaterPages=footer)

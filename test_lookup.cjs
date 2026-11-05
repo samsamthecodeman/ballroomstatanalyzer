@@ -8,6 +8,7 @@ function element(id) {
     value: '', textContent: '', listeners: {}, children: [],
     addEventListener(event, fn) { this.listeners[event] = fn; },
     replaceChildren(...children) { this.children = children; },
+    setAttribute(key, value) { this[key] = value; },
   });
   return nodes.get(id);
 }
@@ -17,6 +18,7 @@ const matches = [
 ];
 const context = vm.createContext({
   $: element, VISITOR_ID: 'test', document: {createElement: () => ({})},
+  selectedSource: () => element('source').value || 'bce',
   setTimeout() {}, clearTimeout() {}, encodeURIComponent,
   fetch: async () => ({ok: true, json: async () => ({dancers: matches})}),
 });
@@ -45,5 +47,16 @@ vm.runInContext(source.slice(start, source.indexOf('$("searchForm").addEventList
   context.fetch = async () => ({ok: false, json: async () => ({error: 'Try a dancer ID'})});
   await context.lookupDancers('Sam');
   assert.equal(element('dancerLookupStatus').textContent, 'Try a dancer ID');
+  element('source').value = 'o2cm';
+  element('source').listeners.change();
+  assert.equal(element('aid').placeholder, 'Exact last name');
+  assert.equal(element('fuzzy').disabled, true);
+  element('name').value = 'Jonny'; element('aid').value = 'Lu';
+  element('name').listeners.input();
+  assert.equal(element('aid').value, 'Lu');
+  element('source').value = 'bce';
+  element('source').listeners.change();
+  assert.equal(element('aid').value, '');
+  assert.equal(element('aid').inputMode, 'numeric');
   console.log('Passed: name selection, duplicate-name IDs, editing, stale response handling, and lookup errors.');
 })().catch(error => { console.error(error); process.exitCode = 1; });
