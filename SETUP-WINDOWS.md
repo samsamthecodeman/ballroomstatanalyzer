@@ -131,6 +131,43 @@ Run these in PowerShell from `C:\comp-history`:
 
 Certificate renewal and address updates happen on their own.
 
+## Automatic updates from GitHub (optional)
+
+The Windows task **Ballroom Stats Analyzer - GitHub Update** checks `origin/main` once each morning
+at **8:00 a.m. in this PC's time zone** (Central Time on this PC). It runs as your signed-in Windows
+account, without a stored password. Keep Docker Desktop running. Missed runs start when available.
+
+Install or change its time from the project folder:
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\Install-AutoDeploy.ps1 -At 08:00
+```
+
+It skips uncommitted source changes and refuses divergent Git history. When a new commit is available,
+it fast-forwards `main`, builds the app, replaces only the app container, and waits for its health check.
+The app briefly restarts; active searches are interrupted. Cached results and the local `.env` are kept.
+If a build or deployment fails, the log records it and the next morning retries. A failed build leaves
+the old container running; a failed container health check may need manual attention.
+
+Logs and deployment state are in `tmp\auto-deploy\` (excluded from Git). Inspect the latest log with:
+
+```powershell
+Get-ChildItem .\tmp\auto-deploy\deploy-*.log | Sort-Object LastWriteTime -Descending | Select-Object -First 1 | Get-Content
+```
+
+Check GitHub now without changing the container:
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\Update-FromGitHub.ps1 -CheckOnly
+```
+
+To disable or re-enable morning updates:
+
+```powershell
+Disable-ScheduledTask -TaskName "Ballroom Stats Analyzer - GitHub Update"
+Enable-ScheduledTask -TaskName "Ballroom Stats Analyzer - GitHub Update"
+```
+
 ## Changing settings
 
 The app's options are on its `command:` line in `docker-compose.yml`. After editing, run
