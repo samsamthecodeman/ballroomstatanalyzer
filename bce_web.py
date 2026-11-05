@@ -654,7 +654,7 @@ svg.chart .dot:hover, svg.chart .dot:focus { fill: var(--red); stroke: var(--red
     <div class="band">
       <div class="band-head c-head">
         <h2>Filters</h2>
-        <p class="note">Narrow results and exports. YCN points only follows the uncontested-event setting.</p>
+        <p class="note">Narrow results and exports. YCN points follows the event-exclusion checkboxes.</p>
       </div>
       <div class="c-body">
         <div class="filters" id="filters"></div>
@@ -690,7 +690,7 @@ svg.chart .dot:hover, svg.chart .dot:focus { fill: var(--red); stroke: var(--red
     <section data-sec="ycn">
       <header class="sec-head c-head">
         <h2>YCN points</h2>
-        <p class="note">From the Comp Express results above, using <a href="https://ballroom.mit.edu/ycn-proficiency-points/" target="_blank" rel="noopener">MIT’s single-ladder YCN rules</a>, the same rules LilacDB follows. Seven or more points in a level closes that level for that dance. Honors “Exclude uncontested events”; other filters do not affect YCN points.</p>
+        <p class="note">From the Comp Express results above, using <a href="https://ballroom.mit.edu/ycn-proficiency-points/" target="_blank" rel="noopener">MIT’s single-ladder YCN rules</a>, the same rules LilacDB follows. Seven or more points in a level closes that level for that dance. Honors the event-exclusion checkboxes; other filters do not affect YCN points.</p>
       </header>
       <div class="sec-body c-body">
         <div class="tab-row"><span class="hint">Role</span><div class="tabs" id="ycnRoles"></div></div>
@@ -765,7 +765,7 @@ const r1 = (x) => x == null ? "–" : (Math.round(x * 10) / 10).toString();
 const pct = (x) => x == null ? "–" : Math.round(x) + "%";
 
 const state = {
-  data: null, filters: {style: "", level: "", category: "", division: "", partner: "", excludeUncontested: false},
+  data: null, filters: {style: "", level: "", category: "", division: "", partner: "", excludeUncontested: false, excludeThreeCouplePodiums: false},
   bdKey: "category", bdSort: {key: "events", dir: -1},
   limits: {breakdown: "all", h2h: "10", rivals: "10", events: "25"}, collapsed: {}, ycnLevels: {}, ycnRole: "",
   rivStyle: "", rivDance: "", rivSort: {key: "above", dir: -1}, rivOpen: null, h2hBy: "dancer", h2hSort: {key: "meetings", dir: -1}, evSort: {key: "order", dir: 1},
@@ -1023,7 +1023,7 @@ function handleResult(res) {
   }
   res.events.forEach((e, i) => { e.order = i; });
   state.data = res;
-  state.filters = {style: "", level: "", category: "", division: "", partner: "", excludeUncontested: false};
+  state.filters = {style: "", level: "", category: "", division: "", partner: "", excludeUncontested: false, excludeThreeCouplePodiums: false};
   state.openOpp = null;
   state.rivOpen = null;
   state.rivStyle = "";
@@ -1078,12 +1078,19 @@ async function exportResults(format) {
 $("exportCsv").addEventListener("click", () => exportResults("csv"));
 $("exportPdf").addEventListener("click", () => exportResults("pdf"));
 
+function passesEventExclusions(e) {
+  const f = state.filters;
+  const threeCouplePodium = e.entries === 3 && e.place != null && e.place >= 1 && e.place <= 3 &&
+    e.category !== "Solo" && e.role !== "Solo";
+  return (!f.excludeUncontested || e.entries !== 1) && (!f.excludeThreeCouplePodiums || !threeCouplePodium);
+}
+
 function filtered() {
   const f = state.filters;
   return state.data.events.filter((e) =>
     (!f.style || e.style === f.style) && (!f.level || e.level === f.level) &&
     (!f.category || e.category === f.category) && (!f.division || e.division === f.division) && (!f.partner || (e.partner || "(solo)") === f.partner) &&
-    (!f.excludeUncontested || e.entries !== 1));
+    passesEventExclusions(e));
 }
 
 function summary(evs) {
@@ -1201,18 +1208,22 @@ function buildFilters() {
   $("filters").innerHTML = defs.map(([k, label]) =>
     `<label>${label}<select data-f="${k}"><option value="">All</option>${opts(k).map((o) => `<option>${esc(o)}</option>`).join("")}</select></label>`
   ).join("") + `<label class="check-inline" title="Hide events with exactly one entry (one couple or individual)."><input type="checkbox" id="excludeUncontested"${state.filters.excludeUncontested ? " checked" : ""}>Exclude uncontested events</label>` +
+    `<label class="check-inline" title="Exclude finishes of 1st, 2nd, or 3rd when exactly three couples competed. Solo events remain included."><input type="checkbox" id="excludeThreeCouplePodiums"${state.filters.excludeThreeCouplePodiums ? " checked" : ""}>Exclude top-3 finishes in 3-couple events</label>` +
     `<button class="linkbtn" id="resetF" type="button">Clear filters</button>`;
   $("filters").querySelectorAll("select").forEach((s) => s.addEventListener("change", () => {
     state.filters[s.dataset.f] = s.value; state.openOpp = null; render();
   }));
-  $("excludeUncontested").addEventListener("change", (event) => {
-    state.filters.excludeUncontested = event.target.checked;
-    state.openOpp = null; state.rivOpen = null; render();
-  });
+  for (const key of ["excludeUncontested", "excludeThreeCouplePodiums"]) {
+    $(key).addEventListener("change", (event) => {
+      state.filters[key] = event.target.checked;
+      state.openOpp = null; state.rivOpen = null; render();
+    });
+  }
   $("resetF").addEventListener("click", () => {
     $("filters").querySelectorAll("select").forEach((s) => { s.value = ""; });
     $("excludeUncontested").checked = false;
-    state.filters = {style: "", level: "", category: "", division: "", partner: "", excludeUncontested: false}; render();
+    $("excludeThreeCouplePodiums").checked = false;
+    state.filters = {style: "", level: "", category: "", division: "", partner: "", excludeUncontested: false, excludeThreeCouplePodiums: false}; render();
   });
 }
 
@@ -1449,7 +1460,7 @@ function ycnCompute(evs, role) {
 
 function renderYcn() {
   if (!state.data) return;
-  const all = state.data.events.filter((e) => !state.filters.excludeUncontested || e.entries !== 1);
+  const all = state.data.events.filter(passesEventExclusions);
   const roles = ["Leader", "Follower"].filter((r) => all.some((e) => e.role === r));
   if (!roles.length) {
     $("ycnTable").innerHTML = `<p class="note" style="margin:10px">No couple events to count.</p>`;

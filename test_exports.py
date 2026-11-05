@@ -57,6 +57,26 @@ class ExportTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             bce_export.select_events(result, {"excludeUncontested": "true"})
 
+    def test_exclude_three_couple_podiums_matches_exact_field_and_placement(self):
+        events = [sample_event(eid=i, entries=3, place=place) for i, place in enumerate((1, 2, 3, None, 4))]
+        events += [sample_event(eid=5, entries=4, place=3), sample_event(eid=6, entries=2, place=1),
+                   sample_event(eid=7, entries=None, place=1), sample_event(eid=8, entries=1, place=1),
+                   sample_event(eid=9, entries=3, place=1, category="Solo"),
+                   sample_event(eid=10, entries=3, place=1, role="Solo")]
+        result = {"events": events}
+        selected = bce_export.select_events(result, {"excludeThreeCouplePodiums": True})
+        self.assertEqual([e["eid"] for e in selected], list(range(3, 11)))
+        self.assertEqual(len(bce_export.select_events(result, {"excludeThreeCouplePodiums": False})), 11)
+        combined = bce_export.select_events(result, {"excludeThreeCouplePodiums": True, "excludeUncontested": True})
+        self.assertNotIn(8, [e["eid"] for e in combined])
+        with self.assertRaises(ValueError):
+            bce_export.select_events(result, {"excludeThreeCouplePodiums": "true"})
+        csv_rows = list(csv.DictReader(io.StringIO(bce_export.csv_report(selected).decode("utf-8-sig"))))
+        self.assertEqual(len(csv_rows), len(selected))
+        from pypdf import PdfReader
+        pdf = bce_export.pdf_report(self.result, selected, {"excludeThreeCouplePodiums": True})
+        self.assertIn("Top-3 finishes in 3-couple events: excluded", PdfReader(io.BytesIO(pdf)).pages[0].extract_text())
+
     def test_pdf_pagination_unicode_and_empty_selection(self):
         from pypdf import PdfReader
         events = [sample_event(eid=i, event=f"Event {i:03d}: " + sample_event()["event"]) for i in range(75)]

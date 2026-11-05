@@ -33,6 +33,8 @@ Use the filters to focus on a particular category, style, level, division, or pa
 
 **Exclude uncontested events** removes events with exactly one entry, whether that entry is a couple or an individual. Events with unknown entry counts remain visible. This setting applies to statistics, charts, event lists, exports, and the YCN section.
 
+**Exclude top-3 finishes in 3-couple events** removes events where you placed first, second, or third out of exactly three couples. It applies to statistics, charts, event lists, exports, and the YCN section. Solo events, unknown entry counts, and unknown placements remain included. Both exclusion checkboxes are optional and can be reset with **Clear filters**.
+
 The other dashboard filters do not affect YCN points, so filtering the main results does not hide relevant events from the points calculation.
 
 ### Dance breakdowns

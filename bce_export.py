@@ -8,6 +8,7 @@ from html import escape
 from pathlib import Path
 
 FILTERS = ("style", "level", "category", "division", "partner")
+EVENT_EXCLUSIONS = ("excludeUncontested", "excludeThreeCouplePodiums")
 CSV_COLUMNS = (
     ("Date", "date"), ("Competition", "comp"), ("Event", "event"),
     ("Judging category", "category"), ("Division", "division"), ("Age", "age"),
@@ -19,14 +20,21 @@ CSV_COLUMNS = (
 )
 
 
+def is_three_couple_podium(event):
+    place = event.get("place")
+    return (event.get("entries") == 3 and place is not None and 1 <= place <= 3
+            and event.get("category") != "Solo" and event.get("role") != "Solo")
+
+
 def select_events(result, filters):
     if not isinstance(filters, dict) or any(
-        (not isinstance(value, bool) if key == "excludeUncontested" else
+        (not isinstance(value, bool) if key in EVENT_EXCLUSIONS else
          key not in FILTERS or not isinstance(value, str)) for key, value in filters.items()
     ):
         raise ValueError("Invalid export filters.")
     return [event for event in result["events"]
-            if not (filters.get("excludeUncontested") and event.get("entries") == 1) and all(
+            if not (filters.get("excludeUncontested") and event.get("entries") == 1)
+            and not (filters.get("excludeThreeCouplePodiums") and is_three_couple_podium(event)) and all(
         not value or (event.get(key) or ("(solo)" if key == "partner" else "")) == value
         for key, value in filters.items() if key in FILTERS
     )]
@@ -91,6 +99,7 @@ def pdf_report(result, events, filters):
                             author="Ballroom Stats Analyzer")
     generated = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
     scope = "; ".join("Uncontested events: excluded" if key == "excludeUncontested" else
+                      "Top-3 finishes in 3-couple events: excluded" if key == "excludeThreeCouplePodiums" else
                       f"{key.title()}: {value}" for key, value in filters.items() if value) or "All search results"
     dates = sorted(e["date"] for e in events if e.get("date"))
     story = [p("BALLROOM STATS ANALYZER"), p(result.get("name") or "Dancer results", "ReportTitle"),

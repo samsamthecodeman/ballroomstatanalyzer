@@ -25,7 +25,7 @@ const context = vm.createContext({
 function load(start, end) {
   vm.runInContext(source.slice(source.indexOf(start), source.indexOf(end, source.indexOf(start))), context);
 }
-load('function filtered() {', 'function summary(');
+load('function passesEventExclusions(e) {', 'function summary(');
 load('function buildFilters() {', 'function renderChart(');
 load('function renderYcn() {', '$("ycnRoles").addEventListener');
 assert.equal(context.filtered().length, 5);
@@ -77,3 +77,21 @@ context.state.bdKey = 'dance';
 context.renderBreakdown([]);
 assert.match(element('bdTable').innerHTML, /<tbody><\/tbody>/);
 console.log('Passed: dance breakdown statistics, multi-dance entries, duplicate dances, unknown dances, and existing categories.');
+
+context.state.filters = {};
+const podiumEvents = [1, 2, 3, null, 4].map((place, eid) => ({...events[0], entries: 3, place, eid}));
+podiumEvents.push({...events[0], entries: 4, place: 3, eid: 5}, {...events[0], entries: 2, place: 1, eid: 6},
+  {...events[0], entries: null, place: 1, eid: 7}, {...events[0], entries: 1, place: 1, eid: 8},
+  {...events[0], entries: 3, place: 1, category: 'Solo', eid: 9},
+  {...events[0], entries: 3, place: 1, role: 'Solo', eid: 10});
+context.state.data.events = podiumEvents;
+context.buildFilters();
+element('excludeThreeCouplePodiums').listeners.change({target: {checked: true}});
+assert.deepEqual(Array.from(context.filtered(), event => event.eid), [3, 4, 5, 6, 7, 8, 9, 10]);
+element('excludeUncontested').listeners.change({target: {checked: true}});
+assert.deepEqual(Array.from(context.filtered(), event => event.eid), [3, 4, 5, 6, 7, 9, 10]);
+element('resetF').listeners.click();
+assert.equal(context.state.filters.excludeThreeCouplePodiums, false);
+assert.equal(element('excludeThreeCouplePodiums').checked, false);
+assert.equal(context.filtered().length, 11);
+console.log('Passed: exact 3-couple podium exclusion, solo and unknown-data preservation, combined filters, and reset.');
