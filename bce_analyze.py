@@ -32,6 +32,7 @@ import json
 import re
 import sys
 import threading
+import tempfile
 import time
 import unicodedata
 from collections import defaultdict
@@ -41,6 +42,8 @@ from difflib import SequenceMatcher, get_close_matches
 from pathlib import Path
 from statistics import mean, median
 from urllib.parse import urljoin, urlparse, parse_qs
+from urllib.parse import urlencode
+from datetime import date
 
 try:
     import requests
@@ -51,8 +54,8 @@ except ImportError:
 BASE = "https://ballroomcompexpress.com/"
 RESULTS_URL = urljoin(BASE, "results.php")
 USER_AGENT = "bce-analyzer/1.0 (personal results analysis)"
-LIST_MAX_AGE = 3600        # lists of comps and a dancer's comps: re-check hourly
-COMP_MAX_AGE = 24 * 3600   # a comp's event list: re-check daily (results get posted after the comp)
+LIST_MAX_AGE = 7 * 86400   # lists of comps and a dancer's comps: re-check weekly
+COMP_MAX_AGE = 7 * 86400   # recent/undated event lists: re-check weekly
 # Event results don't change once posted, so event pages are kept indefinitely.
 
 
@@ -71,13 +74,16 @@ class Fetcher:
         self._lock = threading.Lock()
         self._last = 0.0
         self.network_hits = 0
+        from bce_store import ResultsStore
+        self.store = ResultsStore(self.cache_dir)
 
     def _path(self, url: str) -> Path:
         return self.cache_dir / (hashlib.sha1(url.encode()).hexdigest() + ".html")
 
-    def get(self, url: str, use_cache: bool = True, max_age: float | None = None) -> str | None:
+    def get(self, url: str, use_cache: bool = True, max_age: float | None = None,
+            post_data: dict | None = None) -> str | None:
         """Fetch a page, using the saved copy unless it's older than max_age seconds (None = keep forever)."""
-        path = self._path(url)
+        path = self._path(url if post_data is None else url + "?__post=" + urlencode(sorted(post_data.items())))
         miss = path.with_suffix(".miss")
 
         def fresh(f: Path) -> bool:
@@ -95,13 +101,22 @@ class Fetcher:
                     time.sleep(wait)
                 self._last = time.monotonic()
             try:
-                resp = self.session.get(url, timeout=self.timeout)
+                resp = (self.session.post(url, data=post_data, timeout=self.timeout) if post_data is not None
+                        else self.session.get(url, timeout=self.timeout))
             except requests.RequestException:
                 time.sleep(2 * (attempt + 1))
                 continue
             self.network_hits += 1
             if resp.status_code == 200:
-                path.write_text(resp.text, encoding="utf-8")
+                # Readers always see a complete page, even during a background refresh.
+                with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", dir=self.cache_dir, delete=False) as f:
+                    f.write(resp.text)
+                    temporary = Path(f.name)
+                try:
+                    temporary.replace(path)
+                    miss.unlink(missing_ok=True)
+                finally:
+                    temporary.unlink(missing_ok=True)
                 return resp.text
             if resp.status_code in (400, 401, 403, 404, 410):
                 miss.write_text(str(resp.status_code))
@@ -134,7 +149,7 @@ MONTHS = ["january", "february", "march", "april", "may", "june", "july",
           "august", "september", "october", "november", "december"]
 DATE_RE = re.compile(
     r"\b(" + "|".join(m.capitalize() for m in MONTHS) + r")\s+(\d{1,2})"
-    r"(?:\s*-\s*(?:[A-Z][a-z]+\s+)?\d{1,2})?,\s*(\d{4})"
+    r"(?:\s*[-–]\s*(?:([A-Z][a-z]+)\s+)?(\d{1,2}))?,\s*(\d{4})", re.I
 )
 
 
@@ -143,7 +158,25 @@ def parse_date(text: str) -> str | None:
     if not m:
         return None
     month = MONTHS.index(m.group(1).lower()) + 1
-    return f"{int(m.group(3)):04d}-{month:02d}-{int(m.group(2)):02d}"
+    end_month = MONTHS.index(m.group(3).lower()) + 1 if m.group(3) and m.group(3).lower() in MONTHS else month
+    year = int(m.group(5)) - (1 if end_month < month else 0)
+    try:
+        return date(year, month, int(m.group(2))).isoformat()
+    except ValueError:
+        return None
+
+
+def parse_end_date(text: str) -> str | None:
+    m = DATE_RE.search(text or "")
+    if not m:
+        return None
+    month_name = m.group(3) or m.group(1)
+    if month_name.lower() not in MONTHS:
+        return None
+    try:
+        return date(int(m.group(5)), MONTHS.index(month_name.lower()) + 1, int(m.group(4) or m.group(2))).isoformat()
+    except ValueError:
+        return None
 
 
 def parse_place(text: str) -> int | None:
@@ -331,6 +364,7 @@ def comp_list_entries(html: str) -> dict[int, dict]:
             d = parse_date(" ".join(lines))
             if d:
                 info["date"] = d
+                info["end_date"] = parse_end_date(" ".join(lines))
             out[int(m.group(1))] = info
     return out
 
@@ -376,9 +410,11 @@ def attr_text(el, levels: int = 2) -> str:
 
 def parse_comp_page(html: str, cid: int) -> dict:
     soup = BeautifulSoup(html, "html.parser")
-    h1 = soup.find("h1")
-    title = clean(h1.get_text(" ")) if h1 else f"Comp {cid}"
-    title = re.sub(r"^Results for\s+", "", title)
+    # The site's hidden login modal precedes the actual competition heading.
+    heading = next((h for h in soup.find_all(["h1", "h2", "h3"])
+                    if re.match(r"results for\s+", clean(h.get_text(" ")), re.I)), None)
+    title = clean(heading.get_text(" ")) if heading else f"Comp {cid}"
+    title = re.sub(r"^Results for\s+", "", title, flags=re.I)
     events, seen = [], set()
     for a in soup.find_all("a", href=True):
         q = parse_qs(urlparse(a["href"]).query)
@@ -410,7 +446,44 @@ def parse_comp_page(html: str, cid: int) -> dict:
             "url": f"{RESULTS_URL}?cid={cid}&eid={eid}",
             "attrs": "",
         })
-    return {"cid": cid, "name": title, "date": parse_date(soup.get_text(" ")), "events": events}
+    return {"cid": cid, "name": title, "date": parse_date(soup.get_text(" ")),
+            "end_date": parse_end_date(soup.get_text(" ")), "events": events}
+
+
+def parsed_event(html):
+    data = parse_event_data(html)
+    if data:
+        return data
+    results, n = compute_event_results(parse_event_page(html))
+    return results, n, None, {
+        "judged": None, "n_rounds": max(1, max((r["rounds"] for r in results.values()), default=1)),
+        "solo_share": sum(1 for x in results if len(split_people(x)) == 1) / max(len(results), 1),
+    }
+
+
+def search_dancers(query, fetcher):
+    query = clean(query)
+    if len(query) < 3 or len(query) > 80:
+        return []
+    body = fetcher.get(urljoin(BASE, "php/searchCompsAndDancers.php"),
+                       post_data={"query": query}, max_age=LIST_MAX_AGE)
+    if body is None:
+        raise ValueError("Dancer lookup is unavailable. Try again or enter a dancer ID.")
+    try:
+        rows = json.loads(body)
+    except (ValueError, TypeError):
+        raise ValueError("Dancer lookup returned an unexpected response. Enter a dancer ID instead.") from None
+    if not isinstance(rows, list):
+        raise ValueError("Dancer lookup returned an unexpected response. Enter a dancer ID instead.")
+    matches = []
+    for row in rows:
+        if not isinstance(row, dict) or row.get("type") != "dancer" or not str(row.get("acctid", "")).isdigit():
+            continue
+        name = clean(f"{row.get('fname') or ''} {row.get('lname') or ''}")
+        if name:
+            matches.append({"id": int(row["acctid"]), "name": name,
+                            "location": ", ".join(str(x) for x in (row.get("city"), row.get("stateabbrev") or row.get("countryname")) if x)})
+    return matches[:20]
 
 
 DANCE_RE = re.compile(
@@ -766,7 +839,7 @@ class Cancelled(Exception):
 
 
 def collect(name, fetcher, fuzzy=None, partner=None, cids=None, max_cid=None, aid=None,
-            workers=4, progress=None, **_ignored):
+            workers=4, progress=None, refresh_profile=False, **_ignored):
     """
     Scrape everything needed for one dancer.
 
@@ -795,46 +868,68 @@ def collect(name, fetcher, fuzzy=None, partner=None, cids=None, max_cid=None, ai
         finally:
             ex.shutdown(wait=False, cancel_futures=True)
 
-    # 1. Which comps?
-    progress("discover", 0, 1, "Finding competitions...")
-    meta = discover_comps(fetcher)
-    if aid:
-        overview = fetcher.get(f"{RESULTS_URL}?aid={aid}", max_age=LIST_MAX_AGE)
-        theirs = comp_list_entries(overview) if overview else {}
-        if overview is None:
-            return {**base, "status": "bad_aid"}
-        for cid, info in theirs.items():
-            meta.setdefault(cid, {}).update({k: v for k, v in info.items() if v})
-        comp_ids = sorted(theirs)
-        if cids:
-            wanted = set(cids)
-            comp_ids = [c for c in comp_ids if c in wanted]
-        if not comp_ids:
-            return {**base, "status": "no_aid_comps"}
-        comp_url = lambda cid: f"{RESULTS_URL}?aid={aid}&cid={cid}"
-    else:
-        if not cids:
-            top = max_cid or ((max(meta) + 5) if meta else 300)
-            cids = list(range(1, top + 1))
-        comp_ids = list(cids)
-        comp_url = lambda cid: f"{RESULTS_URL}?cid={cid}"
-
-    # 2. Comp pages -> event lists
+    store = getattr(fetcher, "store", None)
+    profile = store.get_profile(aid) if store and aid and not fetcher.refresh and not refresh_profile else None
+    overview = profile["overview"] if profile else None
+    using_stale_profile = False
     comps = {}
+    if profile:
+        progress("comps", 1, 1, "Reading the shared results index...")
+        comps = {c["cid"]: c for c in profile["comps"] if not cids or c["cid"] in cids}
+    else:
+        # 1. Which comps? Dancer-specific pages preserve exact ID-to-event membership.
+        progress("discover", 0, 1, "Finding competitions...")
+        meta = discover_comps(fetcher)
+        if aid:
+            overview = fetcher.get(f"{RESULTS_URL}?aid={aid}", max_age=0 if refresh_profile else LIST_MAX_AGE)
+            theirs = comp_list_entries(overview) if overview else {}
+            if overview is None:
+                stale_profile = store.get_profile(aid, max_age=None) if store else None
+                if stale_profile:
+                    using_stale_profile = True
+                    overview = stale_profile["overview"]
+                    comps = {c["cid"]: c for c in stale_profile["comps"] if not cids or c["cid"] in cids}
+                else:
+                    return {**base, "status": "bad_aid"}
+            for cid, info in theirs.items():
+                meta.setdefault(cid, {}).update({k: v for k, v in info.items() if v})
+            comp_ids = sorted(theirs)
+            if cids:
+                comp_ids = [c for c in comp_ids if c in set(cids)]
+            if not comp_ids and not comps:
+                return {**base, "status": "no_aid_comps"}
+            comp_url = lambda cid: f"{RESULTS_URL}?aid={aid}&cid={cid}"
+        else:
+            if not cids:
+                top = max_cid or ((max(meta) + 5) if meta else 300)
+                cids = list(range(1, top + 1))
+            comp_ids = list(cids)
+            comp_url = lambda cid: f"{RESULTS_URL}?cid={cid}"
 
-    def handle_comp(cid, html):
-        if not html:
-            return
-        c = parse_comp_page(html, cid)
-        if not c["events"]:
-            return
-        if cid in meta:
-            c["name"] = meta[cid].get("name") or c["name"]
-            c["date"] = meta[cid].get("date") or c["date"]
-        comps[cid] = c
+        # 2. Comp pages -> event lists. Freeze old dancer-specific listings too.
+        def handle_comp(cid, html):
+            if not html:
+                return
+            c = parse_comp_page(html, cid)
+            if not c["events"]:
+                return
+            if cid in meta:
+                for key in ("name", "date", "end_date"):
+                    c[key] = meta[cid].get(key) or c.get(key)
+            comps[cid] = c
 
-    run_pool(comp_ids, lambda cid: fetcher.get(comp_url(cid), max_age=COMP_MAX_AGE), handle_comp, "comps",
-             lambda cid, i, n: f"Competition pages: {i}/{n}")
+        def comp_age(cid):
+            end = meta.get(cid, {}).get("end_date") or meta.get(cid, {}).get("date")
+            try:
+                return None if end and (date.today() - date.fromisoformat(end)).days >= 30 else (0 if refresh_profile else COMP_MAX_AGE)
+            except ValueError:
+                return COMP_MAX_AGE
+
+        if not comps:
+            run_pool(comp_ids, lambda cid: fetcher.get(comp_url(cid), max_age=comp_age(cid)), handle_comp, "comps",
+                     lambda cid, i, n: f"Competition pages: {i}/{n}")
+        if store and aid and not cids and comps and not using_stale_profile:
+            store.put_profile(aid, overview, list(comps.values()))
     base["comps_scanned"] = len(comps)
     if not comps:
         return {**base, "status": "no_comps"}
@@ -848,21 +943,28 @@ def collect(name, fetcher, fuzzy=None, partner=None, cids=None, max_cid=None, ai
         c, e = job
         if not html:
             return
-        data = parse_event_data(html)
-        if data:
-            results, n, title, info = data
-        else:  # older page layouts with a ready-made table
-            results, n = compute_event_results(parse_event_page(html))
-            title = None
-            info = {"judged": None, "n_rounds": max(1, max((r["rounds"] for r in results.values()), default=1)),
-                    "solo_share": sum(1 for x in results if len(split_people(x)) == 1) / max(len(results), 1)}
+        data = parsed_event(html)
+        results, n, title, info = data
         if not results:
             return
         for entry in results:
             all_people.update(split_people(entry))
         parsed.append((c, e, results, n, title, info))
+        if store:
+            store.put_event(c["cid"], e["eid"], data, (norm(x) for entry in results for x in split_people(entry)))
 
-    run_pool(jobs, lambda job: fetcher.get(job[1]["url"]), handle_event, "events",
+    indexed = store.get_events((c["cid"], e["eid"]) for c, e in jobs) if store and not fetcher.refresh else {}
+    missing = []
+    for c, e in jobs:
+        data = indexed.get((c["cid"], e["eid"]))
+        if data:
+            results, n, title, info = data
+            parsed.append((c, e, results, n, title, info))
+            all_people.update(x for entry in results for x in split_people(entry))
+        else:
+            missing.append((c, e))
+    progress("events", len(parsed), len(jobs), f"Reading saved results: {len(parsed)}/{len(jobs)}")
+    run_pool(missing, lambda job: fetcher.get(job[1]["url"]), handle_event, "events",
              lambda job, i, n: f"Event pages: {i}/{n}  ({job[0]['name'][:40]})")
     base["events_scanned"] = len(parsed)
 

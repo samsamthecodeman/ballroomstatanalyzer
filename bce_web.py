@@ -42,6 +42,11 @@ except ImportError as exc:
              "Put bce_analyze.py in the same folder as bce_web.py, and run:  pip install requests beautifulsoup4")
 
 FETCHER: core.Fetcher | None = None  # created in main()
+CACHE_MAINTAINER = None
+SEARCH_ACTIVE = threading.Event()
+LOOKUP_ACTIVE = threading.Event()
+LOOKUP_SLOT = threading.Semaphore(1)
+LOOKUP_RECENT = {}
 # PARTNER_LEADERBOARD = bce_partners.PartnerLeaderboard()
 JOBS: dict[str, dict] = {}
 INSTANCE = uuid.uuid4().hex  # lets us confirm the browser will reach this program, not another one
@@ -115,14 +120,11 @@ def run_job(job_id: str, job: dict, params: dict) -> None:
                 job.update(stage="queue", message=f"Waiting in line: {ahead} search{'es' if ahead != 1 else ''} ahead of yours...")
                 got = SCAN_SLOT.acquire(timeout=1)
             have_slot = True
+            SEARCH_ACTIVE.set()
             with JOBS_LOCK:
                 if job_id in QUEUE:
                     QUEUE.remove(job_id)
-        job.update(stage="start", message="Connecting to ballroomcompexpress.com...")
-        if FETCHER.get(core.RESULTS_URL, max_age=core.LIST_MAX_AGE) is None:
-            job.update(state="error", error="Couldn't reach ballroomcompexpress.com. "
-                                            "Check your internet connection and try again.")
-            return
+        job.update(stage="start", message="Looking up saved results...")
         cids = None
         if params.get("cids"):
             try:
@@ -149,6 +151,7 @@ def run_job(job_id: str, job: dict, params: dict) -> None:
             if job_id in QUEUE:
                 QUEUE.remove(job_id)
         if have_slot:
+            SEARCH_ACTIVE.clear()
             SCAN_SLOT.release()
 
     events = []
@@ -222,6 +225,37 @@ class Handler(BaseHTTPRequestHandler):
             return self._send(200, {"app": "comp-history", "instance": INSTANCE})
         if url.path == "/api/config":
             return self._send(200, {"requireId": CONFIG["require_id"], "public": CONFIG["public"]})
+        if url.path == "/api/cache/status":
+            return self._send(200, {"enabled": CACHE_MAINTAINER is not None,
+                                    **(FETCHER.store.status() if FETCHER else {})})
+        if url.path == "/api/dancers":
+            query = (parse_qs(url.query).get("q", [""])[0]).strip()
+            if not 3 <= len(query) <= 80:
+                return self._send(400, {"error": "Enter between 3 and 80 characters."})
+            who = self.visitor()
+            now = time.time()
+            with JOBS_LOCK:
+                for key in list(LOOKUP_RECENT):
+                    LOOKUP_RECENT[key] = [t for t in LOOKUP_RECENT[key] if now - t < 60]
+                    if not LOOKUP_RECENT[key]:
+                        del LOOKUP_RECENT[key]
+                recent = LOOKUP_RECENT.get(who, [])
+                if len(recent) >= 20:
+                    return self._send(429, {"error": "Please pause before looking up more names, or enter a dancer ID."})
+                LOOKUP_RECENT.setdefault(who, []).append(now)
+            if not LOOKUP_SLOT.acquire(blocking=False):
+                return self._send(503, {"error": "Name lookup is busy. Try again shortly or enter a dancer ID."})
+            LOOKUP_ACTIVE.set()
+            try:
+                return self._send(200, {"dancers": core.search_dancers(query, FETCHER)})
+            except ValueError as exc:
+                return self._send(503, {"error": str(exc)})
+            except Exception:
+                traceback.print_exc()
+                return self._send(503, {"error": "Name lookup is unavailable. You can still enter a dancer ID."})
+            finally:
+                LOOKUP_ACTIVE.clear()
+                LOOKUP_SLOT.release()
         # if url.path == "/api/partner-leader":
         #     return self._send(200, PARTNER_LEADERBOARD.snapshot())
         if url.path in ("/", "/index.html"):
@@ -407,6 +441,7 @@ details.opts .panel { position: absolute; right: 0; top: calc(100% + 8px); z-ind
 .panel label.check { display: grid; grid-template-columns: auto 1fr; gap: 10px; align-items: start; color: var(--ink); font-size: 14px; }
 .panel input[type=text] { height: 36px; padding: 0 10px; border: 1px solid var(--ink); border-radius: 0; background: var(--bg); color: var(--ink); }
 .hint { font-size: 13px; color: var(--grey); }
+.search-hint { margin: 8px 0 0; font-size: 13px; color: var(--grey); }
 input[type=checkbox] { accent-color: var(--ink); width: 16px; height: 16px; margin: 2px 0 0; }
 
 /* ---------- start screen ---------- */
@@ -559,8 +594,9 @@ svg.chart .dot:hover, svg.chart .dot:focus { fill: var(--red); stroke: var(--red
 <header class="bar"><div class="wrap">
   <div class="brand">Ballroom Stats Analyzer</div>
   <form class="search" id="searchForm">
-    <input type="text" id="name" placeholder="Dancer’s name" aria-label="Dancer’s name" autocomplete="off">
-    <input type="text" id="aid" class="aid" placeholder="Dancer ID" aria-label="Dancer ID (optional, much faster)" inputmode="numeric" autocomplete="off">
+    <input type="text" id="name" placeholder="Search dancer by name" aria-label="Search dancer by name" aria-describedby="dancerLookupStatus" list="dancerSuggestions" autocomplete="off">
+    <datalist id="dancerSuggestions"></datalist>
+    <input type="text" id="aid" class="aid" placeholder="Dancer ID" aria-label="Dancer ID (filled when you select a name)" inputmode="numeric" autocomplete="off">
     <details class="opts">
       <summary>Options</summary>
       <div class="panel">
@@ -571,6 +607,7 @@ svg.chart .dot:hover, svg.chart .dot:focus { fill: var(--red); stroke: var(--red
     </details>
     <button class="btn" id="goBtn" type="submit">Analyze</button>
   </form>
+  <p class="search-hint" id="dancerLookupStatus" role="status" aria-live="polite">Type at least 3 characters and choose a dancer, or enter a dancer ID.</p>
 </div></header>
 
 <main class="wrap">
@@ -578,7 +615,7 @@ svg.chart .dot:hover, svg.chart .dot:focus { fill: var(--red); stroke: var(--red
     <h1>Every heat, every final, every rival.</h1>
     <div class="intro">
       <p>See how any dancer on ballroomcompexpress.com has placed over time and against everyone they’ve shared a floor with.</p>
-      <p id="idNote"><strong>Fastest: use their dancer ID with their name.</strong> On the site, open any comp they danced at, type their name in the Dancer box and pick them. The address bar then ends in <code>aid=</code> and a number; that’s the ID. A search by ID takes about a minute.</p>
+      <p id="idNote">Start typing a dancer’s name and choose a match to fill their ID automatically. You can also paste a dancer ID from a Comp Express results URL (the number after <code>aid=</code>).</p>
       <p id="nameOnlyNote" class="note">A name on its own works too, but the site doesn’t list who danced where, so the first name search reads every event on the site and can take a few hours. Pages are saved on your computer, so searching again is quick.</p>
       <p id="partnerJoke" class="partner-joke hidden" title="Distinct partners counted by name in cached event results, including other entrants. Not a ranking of the entire Comp Express website."><span id="partnerLeader"></span></p>
     </div>
@@ -835,19 +872,82 @@ fetch("/api/config").then((r) => r.json()).then((c) => {
   state.requireId = !!c.requireId;
   if (state.requireId) {
     $("name").placeholder = "Dancer’s name (optional)";
-    $("idNote").innerHTML = "<strong>Searches use the dancer’s ID.</strong> On ballroomcompexpress.com, open any comp they danced at, type their name in the Dancer box and pick them. The address bar then ends in <code>aid=</code> and a number; that’s the ID. Add their name too so the right person is shown. Each search takes about a minute.";
+    $("idNote").textContent = "Start typing a dancer’s name and choose a match to fill their ID automatically. You can also enter a dancer ID directly.";
     $("nameOnlyNote").remove();
   }
 }).catch(() => {});
 
 // ---------------- Search & progress ----------------
+const dancerLookup = {matches: new Map(), selectedName: "", timer: null, sequence: 0};
+function chooseDancer(dancer) {
+  $("name").value = dancer.name;
+  $("aid").value = dancer.id;
+  dancerLookup.selectedName = dancer.name;
+  $("dancerSuggestions").replaceChildren();
+  $("dancerLookupStatus").textContent = `Selected ${dancer.name} · ID ${dancer.id}${dancer.location ? " · " + dancer.location : ""}`;
+}
+async function lookupDancers(query) {
+  const sequence = ++dancerLookup.sequence;
+  if (query.length < 3 || /^\d+$/.test(query)) return [];
+  $("dancerLookupStatus").textContent = "Finding matching dancers…";
+  try {
+    const response = await fetch("/api/dancers?q=" + encodeURIComponent(query), {headers: {"X-Visitor": VISITOR_ID}});
+    const result = await response.json();
+    if (sequence !== dancerLookup.sequence) return [];
+    if (!response.ok) throw new Error(result.error || "Name lookup is unavailable. Enter a dancer ID instead.");
+    dancerLookup.matches.clear();
+    const options = result.dancers.map((dancer) => {
+      const option = document.createElement("option");
+      option.value = `${dancer.name} — ID ${dancer.id}`;
+      option.label = dancer.location || `Dancer ID ${dancer.id}`;
+      dancerLookup.matches.set(option.value, dancer);
+      return option;
+    });
+    $("dancerSuggestions").replaceChildren(...options);
+    $("dancerLookupStatus").textContent = options.length
+      ? "Choose a matching dancer from the suggestions to fill their ID."
+      : "No matching dancers found. Try a different spelling or enter a dancer ID.";
+    return result.dancers;
+  } catch (error) {
+    if (sequence === dancerLookup.sequence) $("dancerLookupStatus").textContent = error.message;
+    return [];
+  }
+}
+$("name").addEventListener("input", () => {
+  clearTimeout(dancerLookup.timer);
+  const value = $("name").value.trim();
+  const selected = dancerLookup.matches.get(value);
+  if (selected) { ++dancerLookup.sequence; chooseDancer(selected); return; }
+  if (dancerLookup.selectedName && value !== dancerLookup.selectedName) {
+    $("aid").value = "";
+    dancerLookup.selectedName = "";
+  }
+  ++dancerLookup.sequence;
+  $("dancerSuggestions").replaceChildren();
+  if (value.length >= 3 && !/^\d+$/.test(value)) {
+    dancerLookup.timer = setTimeout(() => lookupDancers(value), 500);
+  } else {
+    $("dancerLookupStatus").textContent = "Type at least 3 characters and choose a dancer, or enter a dancer ID.";
+  }
+});
+$("aid").addEventListener("input", () => { dancerLookup.selectedName = ""; });
+
 $("searchForm").addEventListener("submit", async (e) => {
   e.preventDefault();
   let name = $("name").value.trim(), aid = $("aid").value.trim();
   if (/^\d+$/.test(name) && !aid) { aid = name; name = ""; $("name").value = ""; $("aid").value = aid; }
   if (!name && !aid) { $("name").focus(); return; }
   if (aid && !/^\d+$/.test(aid)) return fail("A dancer ID is a number, like 10062.");
-  if (state.requireId && !aid) return fail("This site searches by dancer ID. On Comp Express, open a comp they danced at, pick them in the Dancer box, and copy the number after aid= in the address bar.");
+  if (state.requireId && !aid) {
+    clearTimeout(dancerLookup.timer);
+    $("goBtn").disabled = true;
+    const matches = await lookupDancers(name);
+    $("goBtn").disabled = false;
+    const exact = matches.filter((dancer) => norm(dancer.name) === norm(name));
+    if (exact.length !== 1) { $("name").focus(); return; }
+    chooseDancer(exact[0]);
+    name = exact[0].name; aid = String(exact[0].id);
+  }
   $("goBtn").disabled = true;
   show("statusView");
   setStatus("Starting…", 0);
@@ -881,7 +981,7 @@ async function poll() {
     const overall = j.stage === "comps" ? share * 0.35 : j.stage === "events" ? 0.35 + share * 0.65 : 0.02;
     const note = state.slowSearch && j.stage === "events" ? " Searching by name reads every event on the site; adding a dancer ID is much faster." : "";
     setStatus((j.message || "Working…") + note, overall);
-    state.timer = setTimeout(poll, 700);
+    state.timer = setTimeout(poll, 300);
   } else if (j.state === "done") {
     $("goBtn").disabled = false;
     state.resultJobId = state.jobId;
@@ -1592,6 +1692,10 @@ def main():
                     help="Seconds between requests to Comp Express (default 0.4, or 0.6 with --public)")
     ap.add_argument("--allow-name-search", action="store_true",
                     help="With --public, also allow name-only searches (these read every event on the site)")
+    ap.add_argument("--no-background-cache", action="store_true",
+                    help="Disable historical population and weekly results refresh")
+    ap.add_argument("--background-delay", type=float, default=2.0,
+                    help="Minimum seconds between background downloads (default 2; shared foreground limit also applies)")
     ap.add_argument("--max-per-hour", type=int, default=20, help="With --public, searches per visitor per hour")
     ap.add_argument("--max-total-per-hour", type=int, default=200,
                     help="With --public, searches the whole site will start per hour, from everyone")
@@ -1608,7 +1712,7 @@ def main():
     except ValueError as exc:
         sys.exit(f"--trust-proxy: {exc}")
 
-    global FETCHER
+    global FETCHER, CACHE_MAINTAINER
     delay = args.delay if args.delay is not None else (0.6 if args.public else 0.4)
     FETCHER = core.Fetcher(args.cache, delay=delay, refresh=False)
     # threading.Thread(target=PARTNER_LEADERBOARD.load_cache, args=(args.cache,), daemon=True).start()
@@ -1617,6 +1721,11 @@ def main():
         CONFIG.update(public=True, require_id=not args.allow_name_search,
                       max_per_hour=args.max_per_hour, trusted_proxies=trusted,
                       max_total_per_hour=args.max_total_per_hour, visitor_id=args.visitor_id)
+        if not args.no_background_cache:
+            from bce_cache import CacheMaintainer
+            CACHE_MAINTAINER = CacheMaintainer(FETCHER,
+                busy=lambda: SEARCH_ACTIVE.is_set() or LOOKUP_ACTIVE.is_set(), delay=args.background_delay, log=log)
+            threading.Thread(target=CACHE_MAINTAINER.run, daemon=True).start()
 
         def stop(*_):  # "docker stop" and systemd send SIGTERM; shut down cleanly instead of waiting to be killed
             raise KeyboardInterrupt

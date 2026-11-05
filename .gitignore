@@ -11,6 +11,9 @@ cache/
 tmp/
 output/
 *.zip
+*.sqlite3
+*.sqlite3-wal
+*.sqlite3-shm
 
 # Python environments and generated files
 __pycache__/
