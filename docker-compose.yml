@@ -1,0 +1,105 @@
+# Ballroom Stats Analyzer at home: app + nginx (HTTPS on your subdomain) + certbot (certificates) + ddns (keeps
+# your subdomain pointed at your home address). Settings live in the .env file next to this one.
+# Start everything with:  docker compose up -d --build      (see SETUP-WINDOWS.md)
+name: comp-history
+
+x-hardening: &hardening
+  restart: unless-stopped
+  init: true
+  security_opt:
+    - no-new-privileges:true
+  logging:
+    driver: json-file
+    options:
+      max-size: "10m"
+      max-file: "3"
+
+services:
+  app:
+    <<: *hardening
+    build: .
+    image: comp-history-app:latest
+    command: ["python", "bce_web.py", "--public", "--host", "0.0.0.0", "--port", "8765",
+              "--cache", "/data/cache", "--trust-proxy", "private", "--visitor-id", "ip+browser"]
+    ports:
+      # Lets you open http://localhost:8765 on this PC. Not reachable from other machines.
+      - "127.0.0.1:8765:8765"
+      # Allows the reverse proxy to reach the app through this PC's Tailscale address.
+      - "100.83.246.24:8765:8765"
+    volumes:
+      - cache:/data/cache
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+
+  nginx:
+    <<: *hardening
+    build: ./nginx
+    image: comp-history-nginx:latest
+    depends_on:
+      - app
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      DOMAIN: ${DOMAIN:?Set DOMAIN in the .env file}
+    volumes:
+      - letsencrypt:/etc/letsencrypt:ro
+
+  certbot:
+    <<: *hardening
+    image: certbot/dns-cloudflare:latest
+    environment:
+      DOMAIN: ${DOMAIN:?Set DOMAIN in the .env file}
+      EMAIL: ${EMAIL:?Set EMAIL in the .env file}
+      CF_API_TOKEN: ${CF_API_TOKEN:?Set CF_API_TOKEN in the .env file}
+    volumes:
+      - letsencrypt:/etc/letsencrypt
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        clean() { printf '%s' "$$1" | tr -d '\r\n\t '; }
+        DOMAIN=$$(clean "$$DOMAIN"); EMAIL=$$(clean "$$EMAIL"); TOKEN=$$(clean "$$CF_API_TOKEN")
+        umask 077
+        printf 'dns_cloudflare_api_token = %s\n' "$$TOKEN" > /tmp/cloudflare.ini
+        if [ ! -f "/etc/letsencrypt/live/$$DOMAIN/fullchain.pem" ]; then
+          echo "Getting an HTTPS certificate for $$DOMAIN (about a minute)..."
+          if ! certbot certonly --non-interactive --agree-tos --no-eff-email --email "$$EMAIL" \
+                 --dns-cloudflare --dns-cloudflare-credentials /tmp/cloudflare.ini \
+                 --dns-cloudflare-propagation-seconds 30 -d "$$DOMAIN"; then
+            echo "Couldn't get the certificate. Check DOMAIN and CF_API_TOKEN in .env, then run:"
+            echo "  docker compose restart certbot"
+            echo "(Waiting an hour before trying again by itself, to stay within Let's Encrypt's limits.)"
+            sleep 3600
+            exit 1
+          fi
+        fi
+        echo "Certificate in place for $$DOMAIN. Checking for renewal twice a day."
+        while :; do
+          certbot renew --quiet --dns-cloudflare-credentials /tmp/cloudflare.ini
+          sleep 43200
+        done
+
+  ddns:
+    <<: *hardening
+    restart: "no"
+    # Enable only for direct hosting; the existing reverse proxy manages public routing.
+    profiles: ["direct-hosting"]
+    image: python:3.12-alpine
+    environment:
+      DOMAIN: ${DOMAIN:?Set DOMAIN in the .env file}
+      CF_API_TOKEN: ${CF_API_TOKEN:?Set CF_API_TOKEN in the .env file}
+      CF_ZONE_ID: ${CF_ZONE_ID:-}
+      DDNS_INTERVAL: ${DDNS_INTERVAL:-300}
+    volumes:
+      - ./ddns/ddns.py:/ddns.py:ro
+    command: ["python", "-u", "/ddns.py"]
+    read_only: true
+    cap_drop:
+      - ALL
+
+volumes:
+  cache:
+  letsencrypt:

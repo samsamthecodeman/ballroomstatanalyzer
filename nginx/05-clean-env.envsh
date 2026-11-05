@@ -1,0 +1,4 @@
+#!/bin/sh
+# Remove stray spaces or Windows line endings from DOMAIN (e.g. if .env was saved in Notepad)
+DOMAIN="$(printf '%s' "${DOMAIN:-}" | tr -d '\r\n\t ')"
+export DOMAIN

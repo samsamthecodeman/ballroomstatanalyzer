@@ -1,0 +1,12 @@
+bce_cache/
+__pycache__/
+*.pyc
+*.md
+*.zip
+.env
+.env.example
+nginx/
+ddns/
+.git/
+tmp/
+output/
