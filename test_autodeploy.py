@@ -69,6 +69,19 @@ class AutoDeployTests(unittest.TestCase):
         self.assertIn("No update needed", self.update())
         self.assertFalse(self.calls.exists())
 
+    def test_default_project_directory_works_from_scheduler(self):
+        scripts = self.work / "scripts"
+        scripts.mkdir()
+        script = scripts / SCRIPT.name
+        shutil.copyfile(SCRIPT, script)
+        (self.work / ".git/info/exclude").write_text("scripts/\n", encoding="utf-8")
+        result = subprocess.run([POWERSHELL, "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass",
+                                 "-File", str(script), "-GitPath", GIT, "-DockerPath", str(self.docker)],
+                                cwd=self.root, capture_output=True, text=True, timeout=30)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn("No update needed", result.stdout)
+        self.assertFalse(self.calls.exists())
+
     def test_dirty_worktree_is_preserved(self):
         (self.work / "app.txt").write_text("Uncommitted edit", encoding="utf-8")
         self.assertIn("Skipped: uncommitted", self.update())

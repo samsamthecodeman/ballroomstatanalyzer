@@ -1,12 +1,13 @@
 [CmdletBinding()]
 param(
-    [string]$ProjectPath = (Split-Path -Parent $PSScriptRoot),
+    [string]$ProjectPath = '',
     [string]$GitPath = 'C:\Program Files\Git\cmd\git.exe',
     [string]$DockerPath = 'C:\Program Files\Docker\Docker\resources\bin\docker.exe',
     [switch]$CheckOnly
 )
 
 $ErrorActionPreference = 'Stop'
+if (-not $ProjectPath) { $ProjectPath = Split-Path -Parent $PSScriptRoot }
 $ProjectPath = (Resolve-Path -LiteralPath $ProjectPath).Path
 $stateDirectory = Join-Path $ProjectPath 'tmp\auto-deploy'
 New-Item -ItemType Directory -Path $stateDirectory -Force | Out-Null
