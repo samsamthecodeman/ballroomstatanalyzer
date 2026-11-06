@@ -35,10 +35,12 @@ vm.runInContext(source.slice(start, source.indexOf('$("searchForm").addEventList
   element('name').value = element('dancerSuggestions').children[1].value;
   element('name').listeners.input();
   assert.equal(element('aid').value, 124);
+  assert.equal(element('aid').hidden, false);
   assert.equal(element('name').value, 'Sam Example');
   element('name').value = 'Another dancer';
   element('name').listeners.input();
   assert.equal(element('aid').value, '');
+  assert.equal(element('aid').hidden, true);
   let release;
   context.fetch = () => new Promise(resolve => { release = resolve; });
   const pending = context.lookupDancers('Sam');

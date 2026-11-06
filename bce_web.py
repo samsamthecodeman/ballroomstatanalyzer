@@ -614,7 +614,7 @@ svg.chart .dot:hover, svg.chart .dot:focus { fill: var(--red); stroke: var(--red
     <input type="hidden" id="source" value="all">
     <input type="text" id="name" placeholder="Name or dancer ID" aria-label="Name or dancer ID" aria-describedby="dancerLookupStatus" list="dancerSuggestions" autocomplete="off">
     <datalist id="dancerSuggestions"></datalist>
-    <input type="hidden" id="aid">
+    <input type="text" id="aid" class="aid" aria-label="Comp Express dancer ID" title="Comp Express dancer ID" readonly hidden>
     <details class="opts">
       <summary>Options</summary>
       <div class="panel">
@@ -900,6 +900,7 @@ const dancerLookup = {matches: new Map(), selectedName: "", timer: null, sequenc
 function chooseDancer(dancer) {
   $("name").value = dancer.name;
   $("aid").value = dancer.id;
+  $("aid").hidden = false;
   dancerLookup.selectedName = dancer.name;
   $("dancerSuggestions").replaceChildren();
   $("dancerLookupStatus").textContent = `Selected ${dancer.name} · ID ${dancer.id}${dancer.location ? " · " + dancer.location : ""}`;
@@ -938,6 +939,7 @@ $("name").addEventListener("input", () => {
   if (selected) { ++dancerLookup.sequence; chooseDancer(selected); return; }
   if (dancerLookup.selectedName && value !== dancerLookup.selectedName) {
     $("aid").value = "";
+    $("aid").hidden = true;
     dancerLookup.selectedName = "";
   }
   ++dancerLookup.sequence;
@@ -1073,6 +1075,9 @@ function handleResult(res) {
     return fail(`Read ${res.events_scanned} events and didn’t find “${res.name || "that dancer"}”.${s} Check the spelling as it appears on the site, or turn on “Match similar spellings” in Options.`);
   }
   res.events.forEach((e, i) => { e.order = i; });
+  $("aid").value = res.aid || "";
+  $("aid").hidden = !res.aid;
+  dancerLookup.selectedName = res.aid ? $("name").value.trim() : "";
   state.data = res;
   $("sourceNotice").textContent = (res.warnings || []).join(" ");
   $("sourceNotice").classList.toggle("hidden", !(res.warnings || []).length);
