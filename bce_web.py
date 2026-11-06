@@ -425,7 +425,7 @@ code { font: inherit; background: var(--tint); padding: 0 4px; }
 /* ---------- header ---------- */
 header.bar { border-bottom: 1px solid var(--ink); }
 header.bar .wrap { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); column-gap: var(--gutter); align-items: center; padding-top: 18px; padding-bottom: 18px; }
-.brand { grid-column: 1 / span 3; font-weight: 700; font-size: 17px; letter-spacing: -0.01em; line-height: 1.2; }
+.brand { grid-column: 1 / span 3; font-weight: 700; font-size: 17px; letter-spacing: -0.01em; line-height: 1.2; text-decoration: none; justify-self: start; }
 form.search { grid-column: 4 / span 9; display: flex; gap: 12px; align-items: center; flex-wrap: wrap; justify-content: flex-end; }
 .search-hint { grid-column: 4 / -1; margin: 8px 0 0; color: var(--grey); font-size: 13px; line-height: 1.5; text-align: right; }
 @media (max-width: 900px) { .brand, form.search, .search-hint { grid-column: 1 / -1; } form.search { justify-content: flex-start; margin-top: 12px; } .search-hint { text-align: left; } }
@@ -604,7 +604,7 @@ svg.chart .dot:hover, svg.chart .dot:focus { fill: var(--red); stroke: var(--red
 
 <body>
 <header class="bar"><div class="wrap">
-  <div class="brand">Ballroom Stats Analyzer</div>
+  <a class="brand" href="/" aria-label="Ballroom Stats Analyzer home">Ballroom Stats Analyzer</a>
   <form class="search" id="searchForm">
     <div class="source-toggle" role="group" aria-label="Results source">
       <button type="button" id="sourceBce" aria-pressed="false">Comp Express</button>
