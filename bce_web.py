@@ -427,7 +427,8 @@ header.bar { border-bottom: 1px solid var(--ink); }
 header.bar .wrap { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); column-gap: var(--gutter); align-items: center; padding-top: 18px; padding-bottom: 18px; }
 .brand { grid-column: 1 / span 3; font-weight: 700; font-size: 17px; letter-spacing: -0.01em; line-height: 1.2; }
 form.search { grid-column: 4 / span 9; display: flex; gap: 12px; align-items: center; flex-wrap: wrap; justify-content: flex-end; }
-@media (max-width: 900px) { .brand, form.search { grid-column: 1 / -1; } form.search { justify-content: flex-start; margin-top: 12px; } }
+.search-hint { grid-column: 4 / -1; margin: 8px 0 0; color: var(--grey); font-size: 13px; line-height: 1.5; text-align: right; }
+@media (max-width: 900px) { .brand, form.search, .search-hint { grid-column: 1 / -1; } form.search { justify-content: flex-start; margin-top: 12px; } .search-hint { text-align: left; } }
 form.search input[type=text] { width: 240px; max-width: 100%; height: 40px; padding: 0 12px; border: 1px solid var(--ink); border-radius: 0; background: var(--bg); }
 form.search input[type=text].aid { width: 130px; }
 .source-toggle { display: flex; gap: 3px; flex-wrap: wrap; }
