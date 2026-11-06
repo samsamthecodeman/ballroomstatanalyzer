@@ -962,7 +962,7 @@ function updateSource() {
   $("dancerLookupStatus").textContent = o2cm
     ? "Enter a full name or Ballroom Comp Express dancer ID. For compound surnames, use Last name, First name."
     : selectedSource() === "all"
-    ? "Unified data combines matching names. Multiple profiles are checked using shared partnerships. IDs refer to Ballroom Comp Express."
+    ? "Type at least 3 characters and choose a dancer"
     : "Type a name and choose a dancer, or enter a Ballroom Comp Express dancer ID.";
   $("cids").disabled = selectedSource() === "all";
   if ($("cids").disabled) $("cids").value = "";
