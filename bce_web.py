@@ -370,6 +370,14 @@ PAGE = r"""<!doctype html>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400;14..32,500;14..32,600;14..32,700&display=swap" rel="stylesheet">
+<script>
+(() => {
+  let theme;
+  try { theme = localStorage.getItem("bsa-theme"); } catch {}
+  document.documentElement.dataset.theme = theme === "light" || theme === "dark" ? theme
+    : window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+})();
+</script>
 <style>
 /* Ballroom Stats Analyzer: Swiss / International Typographic Style.
    12-column grid, flush-left type, hierarchy by size and weight, red accents and green first places. */
@@ -388,8 +396,7 @@ PAGE = r"""<!doctype html>
   --gutter: 24px;
   --margin: 40px;
 }
-@media (prefers-color-scheme: dark) {
-  :root {
+:root[data-theme="dark"] {
     color-scheme: dark;
     --bg: #000000;
     --ink: #FFFFFF;
@@ -400,7 +407,6 @@ PAGE = r"""<!doctype html>
     --on-red: #000000;
     --first-place: #4ADE80;
     --on-first-place: #000000;
-  }
 }
 @media (max-width: 700px) { :root { --margin: 16px; --gutter: 16px; } }
 
@@ -412,6 +418,9 @@ a:hover { color: var(--red); }
 button, input, select { font: inherit; color: inherit; }
 :focus-visible { outline: 2px solid var(--red); outline-offset: 2px; }
 .hidden { display: none !important; }
+.theme-toggle { position: fixed; bottom: 20px; right: 20px; z-index: 100; width: 44px; height: 44px; display: grid; place-items: center; border: 1px solid var(--hair); border-radius: 50%; background: var(--bg); color: var(--ink); cursor: pointer; box-shadow: 0 2px 8px #0003; }
+.theme-toggle:hover { border-color: var(--ink); }
+.theme-toggle svg { width: 22px; height: 22px; }
 code { font: inherit; background: var(--tint); padding: 0 4px; }
 
 /* ---------- grid ---------- */
@@ -775,7 +784,23 @@ svg.chart .dot:hover, svg.chart .dot:focus { fill: var(--red); stroke: var(--red
   </div>
 </main>
 
+<button type="button" id="themeToggle" class="theme-toggle" aria-label="Switch color theme" title="Switch color theme">
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2m0 16v2M2 12h2m16 0h2M5 5l1.4 1.4m11.2 11.2L19 19M5 19l1.4-1.4M17.6 6.4 19 5"/></svg>
+</button>
 <script>
+const themeToggle = document.getElementById("themeToggle");
+function updateThemeToggle() {
+  const dark = document.documentElement.dataset.theme === "dark";
+  themeToggle.setAttribute("aria-label", dark ? "Switch to light mode" : "Switch to dark mode");
+  themeToggle.title = dark ? "Switch to light mode" : "Switch to dark mode";
+}
+themeToggle.addEventListener("click", () => {
+  const theme = document.documentElement.dataset.theme === "dark" ? "light" : "dark";
+  document.documentElement.dataset.theme = theme;
+  try { localStorage.setItem("bsa-theme", theme); } catch {}
+  updateThemeToggle();
+});
+updateThemeToggle();
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const norm = (s) => (s || "").normalize("NFKD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
