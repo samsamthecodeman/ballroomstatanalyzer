@@ -122,6 +122,7 @@ class O2CMTests(unittest.TestCase):
             o2.load_competition(comp, self.fetcher)
 
     def test_partner_filter_and_ambiguous_entries(self):
+        self.fetcher.history = HISTORY.split('<tr><td><b>04-26-25')[0] + '</table>'
         self.assertEqual(o2.collect('Jonny', 'Lu', self.fetcher, partner='Someone Else', competitions=['mit26'])['status'], 'no_o2_results')
         self.fetcher.page = competition().replace('</table>', '<tr><td class="t2n">23) 888 Jonny Lu & Another Partner - NJ</td></tr></table>')
         self.fetcher.store.put_external('o2cm', 'competition', 'mit26', {'version':0})
@@ -129,6 +130,10 @@ class O2CMTests(unittest.TestCase):
             o2.collect('Jonny', 'Lu', self.fetcher, competitions=['mit26'])
         result = o2.collect('Jonny', 'Lu', self.fetcher, competitions=['mit26'], partner='Dorothy Xiao')
         self.assertEqual(len(result['records']), 1)
+        result = o2.collect('Jonny', 'Lu', self.fetcher, competitions=['mit26'], allowed_partners={'dorothy xiao'})
+        self.assertEqual([record.partner for record in result['records']], ['Dorothy Xiao'])
+        self.assertEqual(o2.collect('Jonny', 'Lu', self.fetcher, competitions=['mit26'], allowed_partners=set())['records'], [])
+        self.assertEqual(o2.partner_names('Jonny', 'Lu', self.fetcher), {'dorothy xiao', 'another partner'})
 
     def test_http_source_validation_and_job_wiring(self):
         import bce_web

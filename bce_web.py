@@ -125,24 +125,8 @@ def run_job(job_id: str, job: dict, params: dict) -> None:
                 if job_id in QUEUE:
                     QUEUE.remove(job_id)
         job.update(stage="start", message="Looking up saved results...")
-        cids = None
-        if params.get("cids") and params.get("source", "bce") == "bce":
-            try:
-                cids = core.parse_cids(params["cids"])
-            except ValueError:
-                job.update(state="error", error="Comp ids should look like 150-250 or 11,56,169.")
-                return
-        if params.get("source") == "o2cm":
-            import bce_o2cm
-            data = bce_o2cm.collect(params["first"], params["last"], FETCHER,
-                partner=params.get("partner") or None, competitions=params.get("o2_comps"), progress=prog)
-        else:
-            data = core.collect(
-                params.get("name") or "", FETCHER,
-                fuzzy=0.88 if params.get("fuzzy") else None,
-                partner=params.get("partner") or None,
-                cids=cids, aid=params.get("aid"),
-                workers=4, progress=prog)
+        import bce_sources
+        data = bce_sources.collect(params, FETCHER, progress=prog)
     except core.Cancelled:
         job["state"] = "cancelled"
         return
@@ -173,7 +157,7 @@ def run_job(job_id: str, job: dict, params: dict) -> None:
     job["result"] = {
         "status": data["status"],
         "name": data.get("name") or params.get("name") or "",
-        "aid": params.get("aid"),
+        "aid": data.get("aid", params.get("aid")),
         "source": params.get("source", "bce"),
         "warnings": data.get("warnings", []),
         "alternatives": data.get("alternatives", []),
@@ -318,23 +302,24 @@ class Handler(BaseHTTPRequestHandler):
             name = str(params.get("name") or "").strip()[:100]
             aid = str(params.get("aid") or "").strip()[:12]
             source = params.get("source", "bce")
-            if source not in ("bce", "o2cm"):
-                return self._send(400, {"error": "Choose Comp Express or O2CM."})
+            if source not in ("bce", "o2cm", "all"):
+                return self._send(400, {"error": "Choose Comp Express, O2CM, or All data."})
             params["partner"] = str(params.get("partner") or "").strip()[:100]
             params["cids"] = str(params.get("cids") or "").strip()[:200]
             if source == "o2cm":
                 first = str(params.get("first") or "").strip()[:80]
                 last = str(params.get("last") or "").strip()[:80]
-                if not first or not last:
-                    return self._send(400, {"error": "Enter the exact O2CM first name and last name."})
+                if first and last:
+                    name = f"{first} {last}"
                 codes = [part.strip().lower() for part in params["cids"].split(",") if part.strip()]
                 if any(not re.fullmatch(r"[a-z0-9_-]{2,30}", code) for code in codes):
                     return self._send(400, {"error": "O2CM competition codes are comma-separated, for example mit26, big23."})
                 params.update(first=first, last=last, o2_comps=codes or None)
-                name, aid = f"{first} {last}", ""
-            if source == "bce" and name.isdigit() and not aid:
+            if source == "all" and params["cids"]:
+                return self._send(400, {"error": "Select one source to filter by competition IDs or codes."})
+            if name.isdigit() and not aid:
                 name, aid = "", name
-            if source == "bce" and aid and not aid.isdigit():
+            if aid and not aid.isdigit():
                 return self._send(400, {"error": "A dancer ID is a number, like 10062."})
             if source == "bce" and CONFIG["require_id"] and not aid:
                 return self._send(400, {"error": "This site searches by dancer ID. Add the dancer’s ID; the box explains how to find it."})
@@ -445,6 +430,9 @@ form.search { grid-column: 4 / span 9; display: flex; gap: 12px; align-items: ce
 @media (max-width: 900px) { .brand, form.search { grid-column: 1 / -1; } form.search { justify-content: flex-start; margin-top: 12px; } }
 form.search input[type=text] { width: 240px; max-width: 100%; height: 40px; padding: 0 12px; border: 1px solid var(--ink); border-radius: 0; background: var(--bg); }
 form.search input[type=text].aid { width: 130px; }
+.source-toggle { display: flex; gap: 3px; flex-wrap: wrap; }
+.source-toggle button { background: var(--bg); color: var(--ink); border: 1px solid var(--hair); padding: 9px 12px; font: inherit; font-size: 13px; cursor: pointer; }
+.source-toggle button[aria-pressed=true] { background: var(--ink); color: var(--bg); border-color: var(--ink); }
 form.search input::placeholder, .tools input::placeholder { color: var(--grey); }
 
 .btn { height: 40px; padding: 0 20px; border: 1px solid var(--ink); border-radius: 0; background: var(--ink); color: var(--bg); font-weight: 600; cursor: pointer; }
@@ -617,10 +605,15 @@ svg.chart .dot:hover, svg.chart .dot:focus { fill: var(--red); stroke: var(--red
 <header class="bar"><div class="wrap">
   <div class="brand">Ballroom Stats Analyzer</div>
   <form class="search" id="searchForm">
-    <select id="source" aria-label="Results source"><option value="bce">Comp Express</option><option value="o2cm">O2CM</option></select>
-    <input type="text" id="name" placeholder="Search dancer by name" aria-label="Search dancer by name" aria-describedby="dancerLookupStatus" list="dancerSuggestions" autocomplete="off">
+    <div class="source-toggle" role="group" aria-label="Results source">
+      <button type="button" id="sourceBce" aria-pressed="true">Comp Express</button>
+      <button type="button" id="sourceO2cm" aria-pressed="false">O2CM</button>
+      <button type="button" id="sourceAll" aria-pressed="false">All data</button>
+    </div>
+    <input type="hidden" id="source" value="bce">
+    <input type="text" id="name" placeholder="Name or dancer ID" aria-label="Name or dancer ID" aria-describedby="dancerLookupStatus" list="dancerSuggestions" autocomplete="off">
     <datalist id="dancerSuggestions"></datalist>
-    <input type="text" id="aid" class="aid" placeholder="Dancer ID" aria-label="Dancer ID (filled when you select a name)" inputmode="numeric" autocomplete="off">
+    <input type="hidden" id="aid">
     <details class="opts">
       <summary>Options</summary>
       <div class="panel">
@@ -896,8 +889,6 @@ async function loadPartnerLeader(attempt = 0) {
 fetch("/api/config").then((r) => r.json()).then((c) => {
   state.requireId = !!c.requireId;
   if (state.requireId) {
-    $("name").placeholder = "Dancer’s name (optional)";
-    $("idNote").textContent = "Start typing a dancer’s name and choose a match to fill their ID automatically. You can also enter a dancer ID directly.";
     $("nameOnlyNote").remove();
   }
 }).catch(() => {});
@@ -940,7 +931,6 @@ async function lookupDancers(query) {
   }
 }
 $("name").addEventListener("input", () => {
-  if (selectedSource() !== "bce") return;
   clearTimeout(dancerLookup.timer);
   const value = $("name").value.trim();
   const selected = dancerLookup.matches.get(value);
@@ -951,60 +941,66 @@ $("name").addEventListener("input", () => {
   }
   ++dancerLookup.sequence;
   $("dancerSuggestions").replaceChildren();
-  if (value.length >= 3 && !/^\d+$/.test(value)) {
+  if (selectedSource() !== "o2cm" && value.length >= 3 && !/^\d+$/.test(value)) {
     dancerLookup.timer = setTimeout(() => lookupDancers(value), 500);
   } else {
-    $("dancerLookupStatus").textContent = "Type at least 3 characters and choose a dancer, or enter a dancer ID.";
+    $("dancerLookupStatus").textContent = selectedSource() === "o2cm"
+      ? "Enter the full registration name or a Comp Express dancer ID. For compound surnames, use Last name, First name."
+      : "Type at least 3 characters and choose a dancer, or enter a dancer ID.";
   }
 });
-$("aid").addEventListener("input", () => { dancerLookup.selectedName = ""; });
-$("source").addEventListener("change", () => {
+function updateSource() {
   const o2cm = selectedSource() === "o2cm";
   ++dancerLookup.sequence; clearTimeout(dancerLookup.timer);
-  dancerLookup.selectedName = ""; dancerLookup.matches.clear();
+  dancerLookup.matches.clear();
   $("dancerSuggestions").replaceChildren();
-  $("name").value = ""; $("aid").value = "";
-  $("name").placeholder = o2cm ? "Exact first name" : "Search dancer by name";
-  $("name").setAttribute("aria-label", o2cm ? "O2CM first name" : "Search dancer by name");
   $("name").setAttribute("list", o2cm ? "" : "dancerSuggestions");
-  $("aid").placeholder = o2cm ? "Exact last name" : "Dancer ID";
-  $("aid").setAttribute("aria-label", o2cm ? "O2CM last name" : "Dancer ID (filled when you select a name)");
-  $("aid").inputMode = o2cm ? "text" : "numeric";
   $("fuzzy").disabled = o2cm;
   $("dancerLookupStatus").textContent = o2cm
-    ? "O2CM searches exact names. Check partners and competitions for same-name matches; profiles are not automatically merged."
-    : "Type at least 3 characters and choose a dancer, or enter a dancer ID.";
+    ? "Enter a full name or Comp Express dancer ID. For compound surnames, use Last name, First name."
+    : selectedSource() === "all"
+    ? "All data combines matching names. Multiple profiles are checked using shared partnerships. IDs refer to Comp Express."
+    : "Type a name and choose a dancer, or enter a Comp Express dancer ID.";
+  $("cids").disabled = selectedSource() === "all";
+  if ($("cids").disabled) $("cids").value = "";
   $("cids").placeholder = o2cm ? "All, or mit26, big23" : "All, or e.g. 150-250";
   $("competitionFilterLabel").textContent = o2cm ? "O2CM competition codes" : "Comp ids to scan";
   $("idNote").textContent = o2cm
-    ? "Choose O2CM and enter the exact first and last name used at registration. Check the returned partners and competitions to confirm the matches are yours."
-    : "Start typing a dancer’s name and choose a match to fill their ID automatically. You can also enter a dancer ID directly.";
-});
+    ? "Enter the full name used for O2CM registration. A Comp Express ID can also resolve the name. Check the returned partners and competitions."
+    : "Search by name or dancer ID. Choose All data to include both providers; shared partnerships help distinguish matching names.";
+  for (const [id, value] of [["sourceBce", "bce"], ["sourceO2cm", "o2cm"], ["sourceAll", "all"]]) {
+    $(id).setAttribute("aria-pressed", String(selectedSource() === value));
+  }
+}
+$("source").addEventListener("change", updateSource);
+for (const [id, value] of [["sourceBce", "bce"], ["sourceO2cm", "o2cm"], ["sourceAll", "all"]]) {
+  $(id).addEventListener("click", () => { $("source").value = value; updateSource(); });
+}
 
 $("searchForm").addEventListener("submit", async (e) => {
   e.preventDefault();
-  let name = $("name").value.trim(), aid = $("aid").value.trim();
-  const source = selectedSource(), first = name, last = aid;
-  if (source === "o2cm" && (!first || !last)) return fail("Enter the exact O2CM first name and last name.");
-  if (source === "bce" && /^\d+$/.test(name) && !aid) { aid = name; name = ""; $("name").value = ""; $("aid").value = aid; }
+  let name = $("name").value.trim(), aid = dancerLookup.selectedName === $("name").value.trim() ? $("aid").value.trim() : "";
+  const source = selectedSource();
+  if (/^\d+$/.test(name)) { aid = name; name = ""; }
   if (!name && !aid) { $("name").focus(); return; }
   if (source === "bce" && aid && !/^\d+$/.test(aid)) return fail("A dancer ID is a number, like 10062.");
-  if (source === "bce" && state.requireId && !aid) {
+  if (source !== "o2cm" && state.requireId && !aid) {
     clearTimeout(dancerLookup.timer);
     $("goBtn").disabled = true;
     const matches = await lookupDancers(name);
     $("goBtn").disabled = false;
     const exact = matches.filter((dancer) => norm(dancer.name) === norm(name));
-    if (exact.length !== 1) { $("name").focus(); return; }
-    chooseDancer(exact[0]);
-    name = exact[0].name; aid = String(exact[0].id);
+    if (exact.length === 1) {
+      chooseDancer(exact[0]);
+      name = exact[0].name; aid = String(exact[0].id);
+    } else if (source === "bce") { $("name").focus(); return; }
   }
   $("goBtn").disabled = true;
   show("statusView");
   setStatus("Starting…", 0);
   try {
     const res = await fetch("/api/start", {method: "POST", headers: {"Content-Type": "application/json", "X-Visitor": VISITOR_ID},
-      body: JSON.stringify({source, first, last, name, aid: source === "bce" ? aid : "", fuzzy: $("fuzzy").checked,
+      body: JSON.stringify({source, name, aid, fuzzy: $("fuzzy").checked,
                             partner: $("partner").value.trim(), cids: $("cids").value.trim()})});
     const j = await res.json();
     if (!res.ok) throw new Error(j.error || "The search didn’t start.");
@@ -1065,6 +1061,7 @@ function show(id) {
 }
 
 function handleResult(res) {
+  if (res.status === "no_all_results") return fail("No matching results were found across the selected sources. " + (res.warnings || []).join(" "));
   if (res.status === "no_o2_results") return fail("No O2CM results matched that exact name and filters. Check the spelling, partner, and competition codes.");
   if (res.status === "bad_aid") return fail(`Couldn’t open the results page for dancer ID ${res.aid}. Check the number and try again.`);
   if (res.status === "no_aid_comps") return fail(`Dancer ID ${res.aid} has no competition results on the site${$("cids").value.trim() ? " in the comp ids you entered" : ""}. Check the number.`);
@@ -1098,6 +1095,7 @@ function renderAlternatives(res) {
   box.querySelectorAll("button").forEach((b) => b.addEventListener("click", () => {
     $("name").value = b.dataset.alt;
     $("aid").value = res.aid || "";
+    dancerLookup.selectedName = b.dataset.alt;
     $("searchForm").requestSubmit();
   }));
 }
@@ -1197,7 +1195,7 @@ function render() {
   const span = dates.length ? `, ${fmtDate(dates[0])} to ${fmtDate(dates[dates.length - 1])}` : "";
   const alias = d.matched_as.filter((m) => norm(m) !== norm(d.name));
   $("whoSub").textContent = `${comps.size} comp${comps.size === 1 ? "" : "s"}${span}.` +
-    (d.source === "o2cm" ? " Source: O2CM." : " Source: Ballroom Comp Express.") +
+    (d.source === "all" ? " Sources: Comp Express + O2CM." : d.source === "o2cm" ? " Source: O2CM." : " Source: Ballroom Comp Express.") +
     (alias.length ? ` Listed as ${alias.join(", ")}.` : "") +
     (isFiltered() ? " Filters are on." : "");
   renderMarks(evs);

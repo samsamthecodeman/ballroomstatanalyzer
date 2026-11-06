@@ -19,8 +19,8 @@ Ballroom Stats Analyzer uses results from [Ballroom Comp Express](https://ballro
 ## Getting started
 
 1. Open **[bsa.sam-moran.com](https://bsa.sam-moran.com)**.
-2. Start typing your name and choose the matching dancer from the suggestions. Locations and IDs help distinguish people with the same name.
-3. The dancer ID fills automatically. You can also enter an ID directly: on Comp Express, select a dancer in a competition's results and copy the number after `aid=` in the URL.
+2. Choose **Comp Express**, **O2CM**, or **All data**.
+3. Enter your full name or Comp Express dancer ID in the **Name or dancer ID** box. Comp Express suggestions include locations and IDs to distinguish people with the same name. To find an ID, open a dancer's Comp Express results and copy the number after `aid=` in the URL.
 4. Select **Analyze**, then explore the charts, tables, and filters.
 
 The website resolves selected names to dancer IDs to keep analyses focused and reduce traffic to Comp Express. A shared results index speeds up repeat searches. A first-time dancer lookup or results not yet cached may still need downloads. If someone else is running an analysis, your search may wait in the queue.
@@ -29,9 +29,11 @@ The website resolves selected names to dancer IDs to keep analyses focused and r
 
 ### O2CM results
 
-Select **O2CM** in the results-source selector and enter the exact first and last name used at registration. Comp Express IDs do not apply to O2CM. Optional competition codes, such as `mit26`, and the partner filter can narrow a search.
+Select **O2CM** and enter the full name used at registration in the shared search box. For compound surnames, use `Last name, First name`. A Comp Express ID can also resolve the name to search on O2CM; it is not an O2CM identifier. Optional competition codes, such as `mit26`, and the partner filter can narrow a search.
 
-O2CM's public name-history search can include other people with the same name and may omit additional competitor records for double-entered dancers. Verify the returned competitions and partners. Results from the two providers are kept separate rather than automatically merging identities or counting the same competition twice.
+**All data** combines exact-name matches across both providers. Whenever multiple profiles match, shared partnerships are used to resolve the identity. If there is no unique partnership-supported match, choose a Comp Express suggestion or enter a dancer ID. In ambiguous searches, only O2CM events with verified shared partners are included. O2CM's public name-history search can include other people with the same name and may omit additional competitor records for double-entered dancers, so review the returned competitions and partners.
+
+Each event retains its source and scoresheet link. Identical cross-source records are counted once; differently titled versions of the same event may still appear separately. Competition ID/code filters are available when a single source is selected. If one provider is unavailable, All data keeps the other provider's results and displays a warning.
 
 O2CM results include the published overall placements, tied places, field sizes, finals, and source scoresheet links. Cached competition pages are shared across name searches; known histories participate in weekly refresh, recent competitions are refreshed, and older competitions are retained after a final successful refresh at the 30-day cutoff. The date is the date published in O2CM's dancer history. Initial searches download only competitions in the requested history; a full O2CM historical crawl is not enabled.
 
@@ -141,6 +143,7 @@ bce_export.py          CSV and PDF generation
 bce_store.py           Shared SQLite results index and dancer search plans
 bce_cache.py           Historical population and weekly results maintenance
 bce_o2cm.py            O2CM name-history and competition-results importer
+bce_sources.py         Unified search and partnership-based source matching
 bce_partners.py        Preserved partner leaderboard implementation (disabled)
 Dockerfile            Website application image
 docker-compose.yml    Hosting service configuration

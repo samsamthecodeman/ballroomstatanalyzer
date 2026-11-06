@@ -12,6 +12,8 @@ from bce_store import WEEK
 
 BASE = "https://results.o2cm.com/"
 VERSION = 1
+class AmbiguousName(ValueError):
+    pass
 CODE = re.compile(r"^[A-Za-z0-9_-]{2,30}$")
 HEAT = re.compile(r"^[0-9A-Fa-f]{1,16}$")
 WARNING = ("O2CM histories match exact names, not Comp Express IDs. People with the same name may appear; "
@@ -160,7 +162,7 @@ def load_competition(comp, fetcher, force=False):
 
 
 def collect(first, last, fetcher, partner=None, competitions=None, progress=None, force=False,
-            refresh_history=False, refresh_recent=False):
+            refresh_history=False, refresh_recent=False, allowed_partners=None):
     progress = progress or (lambda *args: None)
     first, last = core.clean(first), core.clean(last)
     if not first or not last:
@@ -182,8 +184,10 @@ def collect(first, last, fetcher, partner=None, competitions=None, progress=None
             candidates = [entry for entry in event["entries"] if any(core.norm(p) == target for p in entry["people"])]
             if partner:
                 candidates = [entry for entry in candidates if any(core.norm(p) == core.norm(partner) for p in entry["people"] if core.norm(p) != target)]
+            if allowed_partners is not None:
+                candidates = [entry for entry in candidates if any(core.norm(p) in allowed_partners for p in entry["people"] if core.norm(p) != target)]
             if len(candidates) > 1:
-                raise ValueError(f"Multiple O2CM entries match this name in {comp['name']}. Specify the exact partner to disambiguate.")
+                raise AmbiguousName(f"Multiple O2CM entries match this name in {comp['name']}. Specify the exact partner to disambiguate.")
             if not candidates:
                 continue
             own = candidates[0]
@@ -224,3 +228,19 @@ def refresh_known(fetcher, progress=None):
         profile = fetcher.store.get_external("o2cm", "profile", key)["data"]
         collect(profile["first"], profile["last"], fetcher, progress=progress,
                 refresh_history=True, refresh_recent=True)
+
+
+def partner_names(first, last, fetcher, progress=None):
+    """Inspect all name matches without choosing among same-name entries."""
+    progress = progress or (lambda *args: None)
+    profile, _ = load_history(first, last, fetcher)
+    target = core.norm(f'{first} {last}')
+    partners = set()
+    for i, comp in enumerate(profile['comps']):
+        progress('comps', i, len(profile['comps']), 'Checking O2CM partnerships...')
+        saved, _ = load_competition(comp, fetcher)
+        for heat in comp['heats']:
+            for entry in saved['events'][heat]['entries']:
+                if any(core.norm(p) == target for p in entry['people']):
+                    partners.update(core.norm(p) for p in entry['people'] if core.norm(p) != target)
+    return partners
