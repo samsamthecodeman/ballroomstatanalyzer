@@ -697,17 +697,18 @@ svg.chart .dot:hover, svg.chart .dot:focus { fill: var(--red); stroke: var(--red
     </div>
 
     <section data-sec="compare">
-      <header class="sec-head c-head"><h2>Compare dancers</h2><p class="note">Compare another dancer using the same results source, dashboard filters, and field-beaten mode. Overall histories may cover different events and dates.</p></header>
+      <header class="sec-head c-head"><h2>Compare dancers</h2><p class="note">Add multiple dancers using the same results source, dashboard filters, and field-beaten mode. Overall histories may cover different events and dates.</p></header>
       <div class="sec-body c-body">
         <form id="compareForm" class="tools">
           <label>Other dancer <input id="compareName" type="text" placeholder="Name or dancer ID" aria-label="Other dancer name or ID" list="compareSuggestions" autocomplete="off" required></label>
           <datalist id="compareSuggestions"></datalist>
-          <button type="submit" class="btn" id="compareGo">Compare</button>
+          <button type="submit" class="btn" id="compareGo">Add dancer</button>
           <button type="button" class="btn quiet hidden" id="compareStop">Stop comparison</button>
-          <button type="button" class="linkbtn" id="compareClear">Clear comparison</button>
+          <button type="button" class="linkbtn" id="compareClear">Clear all dancers</button>
         </form>
         <p id="compareStatus" class="note" role="status" aria-live="polite">Look up another dancer to compare their results with yours.</p>
-        <p id="compareWarnings" class="note"></p>
+        <div id="compareRoster" class="tools" aria-label="Comparison dancers"></div>
+        <details><summary>Comparison source notes</summary><p id="compareWarnings" class="note"></p></details>
         <div id="compareStats" class="scroll"></div>
         <p id="compareMeetings" class="note"></p>
         <div id="compareEvents" class="scroll"></div>
@@ -1253,17 +1254,18 @@ function headToHead(evs, by) {
 }
 
 // ---------------- Dancer comparison ----------------
-const comparison = {data: null, job: null, sequence: 0, lookupSequence: 0, timer: null, matches: new Map(), selected: null};
+const comparison = {data: [], job: null, sequence: 0, lookupSequence: 0, timer: null, matches: new Map(), selected: null};
 function comparisonBusy(busy) {
   $("compareGo").disabled = busy;
   $("goBtn").disabled = busy;
   $("compareStop").classList.toggle("hidden", !busy);
 }
-function clearComparison() {
+function clearComparison(keepLoaded = false) {
   ++comparison.sequence; ++comparison.lookupSequence;
   clearTimeout(comparison.timer);
   if (comparison.job) fetch("/api/cancel", {method: "POST", headers: {"Content-Type": "application/json", "X-Visitor": VISITOR_ID}, body: JSON.stringify({id: comparison.job})}).catch(() => {});
-  comparison.job = null; comparison.data = null; comparison.selected = null; comparison.matches.clear();
+  comparison.job = null; if (!keepLoaded) comparison.data = [];
+  comparison.selected = null; comparison.matches.clear();
   $("compareName").value = "";
   $("compareSuggestions").replaceChildren();
   $("compareStatus").textContent = "Look up another dancer to compare their results with yours.";
@@ -1297,9 +1299,16 @@ $("compareName").addEventListener("input", () => {
     comparison.timer = setTimeout(() => comparisonLookup(query).catch(error => { $("compareStatus").textContent = error.message; }), 500);
   }
 });
-$("compareClear").addEventListener("click", clearComparison);
+$("compareClear").addEventListener("click", () => clearComparison());
+$("compareRoster").addEventListener("click", event => {
+  const button = event.target.closest("button[data-remove]");
+  if (!button) return;
+  comparison.data.splice(Number(button.dataset.remove), 1);
+  $("compareStatus").textContent = `${comparison.data.length} comparison dancers loaded. Add another dancer using the search box.`;
+  renderComparison();
+});
 $("compareStop").addEventListener("click", () => {
-  clearComparison(); $("compareStatus").textContent = "Comparison stopped.";
+  clearComparison(true); $("compareStatus").textContent = "Search stopped. Loaded dancers are still available.";
 });
 $("compareForm").addEventListener("submit", async (event) => {
   event.preventDefault();
@@ -1310,7 +1319,6 @@ $("compareForm").addEventListener("submit", async (event) => {
   const source = state.data.source || "bce";
   if (!name) return;
   if (/^\d+$/.test(name)) { aid = name; name = ""; }
-  comparison.data = null; renderComparison();
   comparisonBusy(true); $("compareStatus").textContent = "Looking up comparison dancer…";
   try {
     if (!aid && source !== "o2cm") {
@@ -1324,6 +1332,7 @@ $("compareForm").addEventListener("submit", async (event) => {
     }
     if ((aid && state.data.aid && String(state.data.aid) === aid) ||
         (source === "o2cm" && !aid && norm(name) === norm(state.data.name))) throw new Error("Choose a different dancer to compare with yourself.");
+    if (comparison.data.some(d => aid ? d.aid && String(d.aid) === aid : !d.aid && norm(d.name) === norm(name))) throw new Error("That dancer is already in the comparison.");
     const response = await fetch("/api/start", {method: "POST", headers: {"Content-Type": "application/json", "X-Visitor": VISITOR_ID},
       body: JSON.stringify({source, name, aid, fuzzy: false, partner: "", cids: ""})});
     const started = await response.json();
@@ -1346,8 +1355,11 @@ $("compareForm").addEventListener("submit", async (event) => {
         if (job.state !== "done") throw new Error(job.error || "Comparison stopped.");
         if (job.result.status !== "ok" || !job.result.events.length) throw new Error("No comparison results found. Check the name, source, or dancer ID. " + (job.result.warnings || []).join(" "));
         if (job.result.aid && state.data.aid && String(job.result.aid) === String(state.data.aid)) throw new Error("Both searches resolved to the same dancer. Choose another profile.");
-        comparison.data = job.result;
-        $("compareStatus").textContent = `Comparing ${state.data.name} with ${job.result.name}.`;
+        if (comparison.data.some(d => job.result.aid && d.aid ? String(d.aid) === String(job.result.aid) : norm(d.name) === norm(job.result.name))) throw new Error("That dancer is already in the comparison.");
+        comparison.data.push(job.result);
+        comparison.selected = null; comparison.matches.clear();
+        $("compareName").value = ""; $("compareSuggestions").replaceChildren();
+        $("compareStatus").textContent = `Added ${job.result.name}. ${comparison.data.length} comparison dancers loaded. Add another dancer to expand the table.`;
         renderComparison(); comparisonBusy(false);
       } catch (error) { if (sequence === comparison.sequence) { comparison.job = null; $("compareStatus").textContent = error.message; comparisonBusy(false); } }
     }
@@ -1367,24 +1379,29 @@ function sharedComparisonEvents(ours, theirs) {
   });
 }
 function renderComparison() {
-  for (const id of ["compareStats", "compareMeetings", "compareEvents", "compareWarnings"]) $(id).textContent = "";
-  if (!comparison.data || !state.data) return;
-  const ours = filtered(), theirs = filterEvents(comparison.data.events);
-  const a = summary(ours), b = summary(theirs);
-  $("compareWarnings").textContent = (comparison.data.warnings || []).join(" ");
+  for (const id of ["compareStats", "compareMeetings", "compareEvents", "compareWarnings", "compareRoster"]) $(id).textContent = "";
+  if (!state.data || !comparison.data.length) return;
+  $("compareRoster").innerHTML = comparison.data.map((d,i) => `<button type="button" class="btn quiet" data-remove="${i}" aria-label="Remove ${esc(d.name)}">${esc(d.name)} ×</button>`).join("");
+  const columns = [{data: state.data, events: filtered()}, ...comparison.data.map(data => ({data, events: filterEvents(data.events)}))];
   const metrics = [
-    ["Events", a.events, b.events], ["Competitions", new Set(ours.map(e=>e.cid)).size, new Set(theirs.map(e=>e.cid)).size],
-    ["Wins", a.wins, b.wins], ["Win rate", pct(a.events ? 100*a.wins/a.events : null), pct(b.events ? 100*b.wins/b.events : null)],
-    ["Top-3 finishes", a.podiums, b.podiums], ["Finals", a.finals, b.finals],
-    ["Finals rate", pct(a.events ? 100*a.finals/a.events : null), pct(b.events ? 100*b.finals/b.events : null)],
-    ["Average place", r1(a.avgPlace), r1(b.avgPlace)], ["Average entry count", r1(a.avgField), r1(b.avgField)],
-    [state.fieldMode === "finals" ? "Finals field beaten" : "Total field beaten", pct(a.avgPct), pct(b.avgPct)]
+    ["Events", s=>s.events], ["Competitions", (s,evs)=>new Set(evs.map(e=>e.cid)).size],
+    ["Wins", s=>s.wins], ["Win rate", s=>pct(s.events ? 100*s.wins/s.events : null)],
+    ["Top-3 finishes", s=>s.podiums], ["Finals", s=>s.finals],
+    ["Finals rate", s=>pct(s.events ? 100*s.finals/s.events : null)],
+    ["Average place", s=>r1(s.avgPlace)], ["Average entry count", s=>r1(s.avgField)],
+    [state.fieldMode === "finals" ? "Finals field beaten" : "Total field beaten", s=>pct(s.avgPct)]
   ];
-  $("compareStats").innerHTML = `<table><thead><tr><th>Metric</th><th>${esc(state.data.name)} (you)</th><th>${esc(comparison.data.name)}</th></tr></thead><tbody>${metrics.map(row=>`<tr>${row.map((value,i)=>`<${i?'td':'th'}>${esc(value)}</${i?'td':'th'}>`).join('')}</tr>`).join('')}</tbody></table>`;
-  const shared = sharedComparisonEvents(ours, theirs);
-  const count = outcome => shared.filter(row=>row.outcome===outcome).length;
-  $("compareMeetings").textContent = `${shared.length} shared events after filters: ${count("Win")} wins, ${count("Loss")} losses, ${count("Tie")} ties, ${count("Together")} together, ${count("Unplaced")} without comparable placements. Outcomes are from your perspective.`;
-  $("compareEvents").innerHTML = shared.length ? `<table><thead><tr><th>Date / competition</th><th>Event</th><th>Your place</th><th>Their place</th><th>Outcome</th></tr></thead><tbody>${shared.map(({event:e,other,outcome})=>`<tr><td>${esc(e.date || "Date unknown")} / ${esc(e.comp)}</td><td><a href="${esc(e.url)}" target="_blank" rel="noopener">${esc(e.event)}</a></td><td>${e.place ?? "–"}</td><td>${other.place ?? "–"}</td><td>${outcome}</td></tr>`).join('')}</tbody></table>` : `<p class="note">No shared event IDs were found in these filtered histories. You can still compare their overall statistics above.</p>`;
+  const summaries = columns.map(c=>summary(c.events));
+  $("compareStats").innerHTML = `<table><thead><tr><th>Metric</th>${columns.map((c,i)=>`<th>${esc(c.data.name)}${i===0?' (you)':''}</th>`).join('')}</tr></thead><tbody>${metrics.map(([label,value])=>`<tr><td>${esc(label)}</td>${columns.map((c,i)=>`<td>${esc(value(summaries[i],c.events))}</td>`).join('')}</tr>`).join('')}</tbody></table>`;
+  $("compareWarnings").textContent = comparison.data.map(d => (d.warnings || []).length ? `${d.name}: ${(d.warnings || []).join(' ')}` : '').filter(Boolean).join(' ');
+  $("compareMeetings").textContent = "Head-to-head against each dancer after filters. Outcomes are from your perspective. Open a dancer to see shared events.";
+  $("compareEvents").innerHTML = columns.slice(1).map(({data,events})=>{
+    const shared = sharedComparisonEvents(columns[0].events,events);
+    const count = outcome => shared.filter(row=>row.outcome===outcome).length;
+    const description = `${shared.length} shared events: ${count("Win")} wins, ${count("Loss")} losses, ${count("Tie")} ties, ${count("Together")} together, ${count("Unplaced")} without comparable placements`;
+    const table = shared.length ? `<div class="scroll"><table><thead><tr><th>Date / competition</th><th>Event</th><th>Your place</th><th>Their place</th><th>Outcome</th></tr></thead><tbody>${shared.map(({event:e,other,outcome})=>`<tr><td>${esc(e.date || "Date unknown")} / ${esc(e.comp)}</td><td><a href="${esc(e.url)}" target="_blank" rel="noopener">${esc(e.event)}</a></td><td>${e.place ?? "–"}</td><td>${other.place ?? "–"}</td><td>${outcome}</td></tr>`).join('')}</tbody></table></div>` : `<p class="note">No shared event IDs were found in these filtered histories. You can still compare their overall statistics above.</p>`;
+    return `<details><summary>${esc(data.name)} — ${esc(description)}</summary>${table}</details>`;
+  }).join('');
 }
 
 // ---------------- Rendering ----------------
