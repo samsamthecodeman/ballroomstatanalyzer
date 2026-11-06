@@ -153,6 +153,7 @@ def run_job(job_id: str, job: dict, params: dict) -> None:
         ev["field"] = [{"entry": entry, "people": core.split_people(entry),
                         "place": r["place"], "made_final": r["made_final"]}
                        for entry, r in results.items()]
+        ev["final_percentile"] = bce_export.finals_percentile(ev)
         events.append(ev)
     job["result"] = {
         "status": data["status"],
@@ -678,6 +679,11 @@ svg.chart .dot:hover, svg.chart .dot:focus { fill: var(--red); stroke: var(--red
       <span class="legend-note">Each square is one event. Click one to find it below.</span>
     </div>
     <div class="stats" id="stats"></div>
+    <div class="c-all" style="margin-bottom:28px">
+      <label>Field beaten: <select id="fieldMode" aria-label="Field beaten calculation"><option value="total">Total field beaten</option><option value="finals">Field beaten in finals</option></select></label>
+      <p class="note">“Field beaten” measures your placement on a scale from 100% for first to 0% for last: (field size − place) ÷ (field size − 1). Total uses every entry in the event; finals uses only the published finalists. For example, third of 12 scores 82% overall; third in a six-entry final scores 60%. Tied places share a score; a one-entry field scores 100%.</p>
+      <p class="note">Finals mode shows — for non-finalists or unavailable final data and leaves them out of field-beaten averages. This toggle updates the summary, trend, breakdowns, and event table; other statistics stay the same. Averages give each event equal weight. CSV exports include both measures (Percentile is the total-field score).</p>
+    </div>
 
     <div class="band">
       <div class="band-head c-head">
@@ -809,12 +815,17 @@ const r1 = (x) => x == null ? "–" : (Math.round(x * 10) / 10).toString();
 const pct = (x) => x == null ? "–" : Math.round(x) + "%";
 
 const state = {
+  fieldMode: "total",
   data: null, filters: {style: "", level: "", category: "", division: "", partner: "", excludeUncontested: false, excludeThreeCouplePodiums: false},
   bdKey: "category", bdSort: {key: "events", dir: -1},
   limits: {breakdown: "all", h2h: "10", rivals: "10", events: "25"}, collapsed: {}, ycnLevels: {}, ycnRole: "",
   rivStyle: "", rivDance: "", rivSort: {key: "above", dir: -1}, rivOpen: null, h2hBy: "dancer", h2hSort: {key: "meetings", dir: -1}, evSort: {key: "order", dir: 1},
   openOpp: null, jobId: null, resultJobId: null, timer: null,
 };
+$("fieldMode").addEventListener("change", (event) => {
+  state.fieldMode = event.target.value;
+  if (state.data) render();
+});
 
 // ---------------- Collapsing sections and row limits (remembered between visits) ----------------
 const PREFS_KEY = "bce-comp-history-ui-v1";
@@ -1177,6 +1188,9 @@ function filtered() {
     passesEventExclusions(e));
 }
 
+function fieldBeaten(e) {
+  return state.fieldMode === "finals" ? e.final_percentile ?? null : e.percentile;
+}
 function summary(evs) {
   const placed = evs.filter((e) => e.place != null);
   return {
@@ -1186,7 +1200,7 @@ function summary(evs) {
     finals: evs.filter((e) => e.made_final).length,
     avgPlace: avg(placed.map((e) => e.place)),
     avgField: avg(evs.map((e) => e.entries)),
-    avgPct: avg(evs.filter((e) => e.percentile != null).map((e) => e.percentile)),
+    avgPct: avg(evs.map(fieldBeaten).filter((value) => value != null)),
   };
 }
 
@@ -1219,6 +1233,7 @@ function headToHead(evs, by) {
 
 // ---------------- Rendering ----------------
 function render() {
+  $("fieldMode").value = state.fieldMode;
   const evs = filtered();
   const d = state.data;
   $("whoName").textContent = d.name;
@@ -1277,7 +1292,7 @@ function renderStats(evs) {
   const items = [
     [s.events, "events"], [s.wins, "wins"], [s.podiums, "top-3 finishes"],
     [`${s.finals}`, `finals made (${finalsPct}%)`], [r1(s.avgPlace), "average place"],
-    [pct(s.avgPct), "of the field beaten, on average"],
+    [pct(s.avgPct), state.fieldMode === "finals" ? "of the finals field beaten, on average" : "of the total field beaten, on average"],
   ];
   $("stats").innerHTML = items.map(([v, l]) => `<div class="stat"><b>${esc(v)}</b><span>${esc(l)}</span></div>`).join("");
 }
@@ -1732,7 +1747,7 @@ $("rivMin").addEventListener("change", () => renderRivals(filtered()));
 function renderEvents(evs) {
   const cols = [["order", "Date", 0], ["comp", "Comp"], ["event", "Event"], ["partner", "Partner"], ["place", "Place", 1], ["entries", "Of", 1], ["percentile", "Field beaten", 1]];
   const {key, dir} = state.evSort;
-  const rows = [...evs].sort((a, b) => cmp(a, b, key, dir) || a.order - b.order);
+  const rows = evs.map((e) => ({...e, percentile: fieldBeaten(e)})).sort((a, b) => cmp(a, b, key, dir) || a.order - b.order);
   $("evNote").textContent = `${evs.length} event${evs.length === 1 ? "" : "s"}. Click a heading to sort; event names link to the official results.`;
   const shownE = applyLimit(rows, "events");
   renderFoot("events", shownE.length, rows.length, "events");

@@ -23,6 +23,19 @@ def sample_event(**changes):
 
 
 class ExportTests(unittest.TestCase):
+    def test_finals_field_beaten_uses_actual_finalists(self):
+        field = [{"made_final": i < 6} for i in range(12)]
+        event = sample_event(place=3, entries=12, field=field, percentile=81.8)
+        self.assertEqual(bce_export.finals_percentile(event), 60)
+        row = next(csv.DictReader(io.StringIO(bce_export.csv_report([event]).decode('utf-8-sig'))))
+        self.assertEqual(float(row['Percentile']), 81.8)
+        self.assertEqual(float(row['Finals field beaten (%)']), 60)
+        self.assertIsNone(bce_export.finals_percentile({**event, 'made_final': False}))
+        self.assertIsNone(bce_export.finals_percentile({**event, 'field': []}))
+        self.assertIsNone(bce_export.finals_percentile({**event, 'place': None}))
+        self.assertEqual(bce_export.finals_percentile({**event, 'place': 1, 'field': [{'made_final': True}]}), 100)
+        self.assertEqual(bce_export.finals_percentile({**event, 'place': 2, 'field': [{'made_final': True}] * 4}), 66.7)
+
     def setUp(self):
         self.result = dict(name="Zoë Example", aid=123, events=[sample_event(), sample_event(eid=13, place=None, partner="", style="American Smooth")])
 

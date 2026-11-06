@@ -16,7 +16,7 @@ CSV_COLUMNS = (
     ("Style", "style"), ("Level", "level"), ("Dances", "dances"),
     ("Entry", "entry"), ("Partner", "partner"), ("Role", "role"),
     ("Place", "place"), ("Entries", "entries"), ("Made final", "made_final"),
-    ("Percentile", "percentile"), ("Competition ID", "cid"), ("Event ID", "eid"),
+    ("Percentile", "percentile"), ("Finals field beaten (%)", "final_percentile"), ("Competition ID", "cid"), ("Event ID", "eid"),
     ("Results URL", "url"),
 )
 
@@ -46,6 +46,15 @@ def filename(name, fmt):
     return f"{stem}-results.{fmt}"
 
 
+def finals_percentile(event):
+    """Use the published final flag rather than assuming a six-entry final."""
+    finalists = sum(bool(entry.get("made_final")) for entry in event.get("field", []))
+    place = event.get("place")
+    if not event.get("made_final") or place is None or not 1 <= place <= finalists:
+        return None
+    return 100.0 if finalists == 1 else round(100 * (finalists - place) / (finalists - 1), 1)
+
+
 def csv_report(events):
     output = io.StringIO(newline="")
     writer = csv.writer(output)
@@ -53,7 +62,7 @@ def csv_report(events):
     for event in events:
         row = []
         for _, key in CSV_COLUMNS:
-            value = event.get(key)
+            value = finals_percentile(event) if key == "final_percentile" else event.get(key)
             if key == "source":
                 value = "O2CM" if value == "o2cm" else "Ballroom Comp Express"
             if isinstance(value, list):
