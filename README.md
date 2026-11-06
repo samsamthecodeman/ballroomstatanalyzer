@@ -12,6 +12,7 @@ Ballroom Stats Analyzer uses results from [Ballroom Comp Express](https://ballro
 - **Performance trends:** track results over time and compare statistics by category, style, dance, level, division, partner, and age group.
 - **Matchup analysis:** explore head-to-head comparisons by dancer or couple, plus opponents placed above and below you.
 - **Compare dancers:** add multiple dancers for side-by-side statistics and a list of shared events with wins, losses, ties, and entries danced together.
+- **Upcoming competitions:** paste a public BCE heat-sheet link to find familiar opponents in your entered rounds, with past meetings by dancer and exact partnership.
 - **Judging categories:** distinguish couple-judged, leader-judged, follower-judged, and solo events.
 - **Filters:** narrow results by category, style, level, division, and partner, and optionally exclude uncontested events.
 - **YCN points estimates:** review role-specific calculations, event-by-event explanations, and interpretations of ambiguous level names.
@@ -31,6 +32,12 @@ The website resolves selected names to dancer IDs to keep analyses focused and r
 ### Comparing dancers
 
 After analyzing your own results, open **Compare dancers**, enter another dancer's name or BCE ID, and select **Add dancer**. Repeat to compare yourself with three or more dancers in the same table. Each dancer has an expandable head-to-head section and a remove button. Choose a suggestion when multiple people share a name. The comparison uses your analyzed source (Unified data, BCE, or O2CM), the dashboard filters, and the selected field-beaten calculation. Overall statistics can cover different competitions and dates; shared-event outcomes require matching provider, competition, and event IDs. Entries danced together are shown separately from wins, losses, and ties. Stopping a search keeps the dancers already loaded. Remove individual dancers or use **Clear all dancers** without losing the primary dashboard. Exports contain the primary dancer's results.
+
+### Upcoming competitions
+
+Analyze yourself, then paste a public BCE heat-sheet or schedule link into **Upcoming competition** and select **Check opponents**. Your registered rounds are joined to published entrants. The report shows prior meetings, wins/losses/ties, past entries together, and up to ten recent shared-event results per dancer. Exact-partnership statistics are separate from a dancer's history with any partner. Conditional callbacks are excluded, and revised published times are used. The report flags unpublished or ambiguous data and past session dates; verify the official schedule before competing.
+
+This feature uses all events in your completed analysis, regardless of dashboard filters, and excludes results from the competition being checked. It does not download every opponent's full history or predict results. Ambiguous registered names and multiple same-name historical entries are not silently combined. Public schedule pages are cached for 15 minutes, independently of the historical-results refresh policy. You do not need to provide BCE credentials. Exports contain historical results.
 
 ### O2CM results
 
@@ -149,6 +156,7 @@ bce_store.py           Shared SQLite results index and dancer search plans
 bce_cache.py           Historical population and weekly results maintenance
 bce_o2cm.py            O2CM name-history and competition-results importer
 bce_sources.py         Unified search and partnership-based source matching
+bce_upcoming.py        Public heat sheets and upcoming-opponent history
 bce_partners.py        Preserved partner leaderboard implementation (disabled)
 Dockerfile            Website application image
 docker-compose.yml    Hosting service configuration

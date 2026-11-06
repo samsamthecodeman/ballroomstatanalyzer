@@ -47,6 +47,7 @@ SEARCH_ACTIVE = threading.Event()
 LOOKUP_ACTIVE = threading.Event()
 LOOKUP_SLOT = threading.Semaphore(1)
 LOOKUP_RECENT = {}
+UPCOMING_RECENT = {}
 # PARTNER_LEADERBOARD = bce_partners.PartnerLeaderboard()
 JOBS: dict[str, dict] = {}
 INSTANCE = uuid.uuid4().hex  # lets us confirm the browser will reach this program, not another one
@@ -276,6 +277,36 @@ class Handler(BaseHTTPRequestHandler):
                 raise ValueError
         except ValueError:
             return self._send(400, {"error": "Bad request"})
+        if url.path == "/api/upcoming":
+            cleanup_jobs()
+            job = JOBS.get(str(params.get("id", "")))
+            if not job or job.get("visitor") != self.visitor():
+                return self._send(404, {"error": "Your analysis expired. Analyze your dancer again before loading a heat sheet."})
+            if job.get("state") != "done":
+                return self._send(409, {"error": "Finish your dancer analysis first."})
+            who, now = self.visitor(), time.time()
+            with JOBS_LOCK:
+                for key in list(UPCOMING_RECENT):
+                    UPCOMING_RECENT[key] = [t for t in UPCOMING_RECENT[key] if now - t < 60]
+                    if not UPCOMING_RECENT[key]:
+                        del UPCOMING_RECENT[key]
+                if len(UPCOMING_RECENT.get(who, [])) >= 6:
+                    return self._send(429, {"error": "Please wait a minute before checking more heat sheets."})
+                UPCOMING_RECENT.setdefault(who, []).append(now)
+            if not LOOKUP_SLOT.acquire(blocking=False):
+                return self._send(503, {"error": "Another lookup is running. Try again shortly."})
+            LOOKUP_ACTIVE.set()
+            try:
+                import bce_upcoming
+                return self._send(200, bce_upcoming.analyze(str(params.get("url") or "")[:500], job["result"], FETCHER))
+            except ValueError as exc:
+                return self._send(400, {"error": str(exc)})
+            except Exception:
+                traceback.print_exc()
+                return self._send(503, {"error": "The BCE schedule could not be loaded. Try again shortly."})
+            finally:
+                LOOKUP_ACTIVE.clear()
+                LOOKUP_SLOT.release()
         if url.path == "/api/export":
             cleanup_jobs()
             job = JOBS.get(str(params.get("id", "")))
@@ -695,6 +726,20 @@ svg.chart .dot:hover, svg.chart .dot:focus { fill: var(--red); stroke: var(--red
         <div class="band-tools tools" style="margin:16px 0 0"><button type="button" class="linkbtn" id="collapseAll">Collapse all sections</button></div>
       </div>
     </div>
+
+    <section data-sec="upcoming">
+      <header class="sec-head c-head"><h2>Upcoming competition</h2><p class="note">Paste a public BCE heat-sheet link to find familiar opponents in your entered events.</p></header>
+      <div class="sec-body c-body">
+        <form id="upcomingForm" class="tools">
+          <label>Heat sheet <input type="text" id="upcomingUrl" aria-label="BCE heat sheet link" placeholder="https://ballroomcompexpress.com/heatsheets.php?cid=243" required style="width:100%;min-width:220px"></label>
+          <button type="submit" id="upcomingGo" class="btn">Check opponents</button>
+        </form>
+        <p class="note" id="upcomingStatus" role="status" aria-live="polite">Uses your completed analysis. No BCE login required.</p>
+        <div id="upcomingResults"></div>
+        <p class="note">Uses all results from your completed analysis, including both sources when Unified data was selected. Dashboard filters do not limit this history. Meetings span dances, levels, and judging categories; review the event details. Names are matched as published; ambiguous registered names are flagged. “No previous meetings” means none in this analyzed history.</p>
+        <p class="note">Conditional callback rounds are excluded from the entered-round list. Entrants and times may change; BCE pages are cached for 15 minutes. Use the official schedule on competition day. These statistics are past results, not predictions. Exports above contain your historical analysis.</p>
+      </div>
+    </section>
 
     <section data-sec="compare">
       <header class="sec-head c-head"><h2>Compare dancers</h2><p class="note">Add multiple dancers using the same results source, dashboard filters, and field-beaten mode. Overall histories may cover different events and dates.</p></header>
@@ -1131,6 +1176,11 @@ function handleResult(res) {
     return fail(`Read ${res.events_scanned} events and didn’t find “${res.name || "that dancer"}”.${s} Check the spelling as it appears on the site, or turn on “Match similar spellings” in Options.`);
   }
   res.events.forEach((e, i) => { e.order = i; });
+  ++upcomingSequence;
+  upcomingHistories = [];
+  $("upcomingGo").disabled = false;
+  $("upcomingResults").textContent = "";
+  $("upcomingStatus").textContent = "Uses your completed analysis. No BCE login required.";
   clearComparison();
   $("aid").value = res.aid || "";
   $("aid").hidden = !res.aid;
@@ -1252,6 +1302,60 @@ function headToHead(evs, by) {
   }
   return [...map.values()];
 }
+
+// ---------------- Upcoming competition ----------------
+let upcomingSequence = 0;
+let upcomingHistories = [];
+function meetingSummary(history) {
+  if (!history) return "Ambiguous registered name — history not merged.";
+  return `${history.meetings} previous opposing entries: ${history.wins} wins, ${history.losses} losses, ${history.ties} ties, ${history.unplaced} without comparable placements. ${history.together} past entries together.` + (history.ambiguous_events ? ` ${history.ambiguous_events} ambiguous historical events excluded.` : '');
+}
+function recentMeetings(history) {
+  if (!history?.matches?.length) return "";
+  const index = upcomingHistories.push(history) - 1;
+  return `<details data-history="${index}"><summary>Recent meetings (up to 10)</summary><div class="meeting-table"></div></details>`;
+}
+$("upcomingResults").addEventListener("toggle", event => {
+  const node = event.target;
+  if (!node.open || node.dataset.history === undefined || node.dataset.loaded) return;
+  const history = upcomingHistories[Number(node.dataset.history)];
+  if (!history) return;
+  node.querySelector(".meeting-table").innerHTML = `<div class="scroll"><table><thead><tr><th>Date / competition</th><th>Event / category</th><th>Your partner</th><th>Opposing entry</th><th>Your place / theirs</th></tr></thead><tbody>${history.matches.map(m=>`<tr><td>${esc(m.date || 'Date unknown')} / ${esc(m.competition)}</td><td><a href="${esc(m.url)}" target="_blank" rel="noopener">${esc(m.event)}</a><br>${esc(m.category)}</td><td>${esc(m.your_partner || '(solo)')}</td><td>${esc(m.opposing_entry)}</td><td>${m.your_place ?? '–'} / ${m.their_place ?? '–'}</td></tr>`).join('')}</tbody></table></div>`;
+  node.dataset.loaded = "true";
+}, true);
+function renderUpcoming(data) {
+  upcomingHistories = [];
+  const familiar = new Set(data.events.flatMap(e=>e.opponents.flatMap(o=>o.people_history.filter(p=>p.history?.meetings > 0).map(p=>norm(p.name)))));
+  $("upcomingResults").innerHTML = `<h3>${esc(data.competition)} — ${esc(data.dancer)}</h3>
+    <p>${data.events.length} entered rounds · ${familiar.size} distinct previous opponents · ${data.history_events} historical events checked.</p>
+    <p class="note">${data.sessions.map(esc).join('<br>')}</p>
+    <p class="note">${data.warnings.map(esc).join('<br>')}</p>
+    <p><a href="${esc(data.url)}" target="_blank" rel="noopener">Official heat sheets</a> · <a href="${esc(data.schedule_url)}" target="_blank" rel="noopener">Official schedule</a></p>
+    ${data.events.map(e=>`<details><summary>${esc(e.time)} — Event ${e.number}: ${esc(e.title)} (${esc(e.round)}) · ${e.entries ?? 'Unknown'} entries</summary>
+      <p class="note">${esc(e.session)} · ${esc(e.role)} ${esc(e.partner)} · ${esc(e.category || '')}</p>
+      ${!e.opponents.length ? `<p class="note">${e.entries === 1 ? 'Uncontested in this published round.' : 'Opponent data could not be matched. Check the official schedule and notices above.'}</p>` : e.opponents.map(o=>`<div style="margin:18px 0;border-top:1px solid var(--hair);padding-top:12px">
+        <h4>${esc(o.bib)} — ${esc(o.entry)}</h4><p class="note">This exact partnership: ${esc(meetingSummary(o.partnership_history))}</p>
+        ${o.people_history.map(p=>`<p><strong>${esc(p.name)}</strong> — ${esc(meetingSummary(p.history))}${p.history?.last_met ? ` Last met: ${esc(p.history.last_met)}.` : ''}</p>${recentMeetings(p.history)}`).join('')}
+      </div>`).join('')}</details>`).join('')}`;
+}
+$("upcomingForm").addEventListener("submit", async event => {
+  event.preventDefault();
+  if (!state.resultJobId) return;
+  const sequence = ++upcomingSequence;
+  $("upcomingGo").disabled = true;
+  $("upcomingResults").textContent = "";
+  $("upcomingStatus").textContent = "Reading your public heat sheet and matching previous opponents…";
+  try {
+    const response = await fetch("/api/upcoming", {method: "POST", headers: {"Content-Type": "application/json", "X-Visitor": VISITOR_ID},
+      body: JSON.stringify({id: state.resultJobId, url: $("upcomingUrl").value.trim()})});
+    const data = await response.json();
+    if (sequence !== upcomingSequence) return;
+    if (!response.ok) throw new Error(data.error || "The heat sheet could not be loaded.");
+    renderUpcoming(data);
+    $("upcomingStatus").textContent = `Checked ${new Date(data.checked_at).toLocaleString()}. BCE pages are cached for ${data.cache_minutes} minutes; check the official links for changes.`;
+  } catch (error) { if (sequence === upcomingSequence) $("upcomingStatus").textContent = error.message; }
+  finally { if (sequence === upcomingSequence) $("upcomingGo").disabled = false; }
+});
 
 // ---------------- Dancer comparison ----------------
 const comparison = {data: [], job: null, sequence: 0, lookupSequence: 0, timer: null, matches: new Map(), selected: null};
