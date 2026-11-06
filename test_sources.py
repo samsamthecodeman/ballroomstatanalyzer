@@ -115,7 +115,7 @@ class SourceTests(unittest.TestCase):
         from pypdf import PdfReader
         report = bce_export.pdf_report(dict(name='Sam Example', source='all'), events, {})
         text = '\n'.join(page.extract_text() for page in PdfReader(io.BytesIO(report)).pages)
-        self.assertIn('Sources: Comp Express + O2CM', text)
+        self.assertIn('Sources: Ballroom Comp Express + O2CM', text)
         self.assertIn('ballroomcompexpress.com + results.o2cm.com', text)
 
 

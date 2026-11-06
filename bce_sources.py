@@ -10,7 +10,7 @@ def split_name(value):
     else:
         parts = value.rsplit(' ', 1)
         if len(parts) != 2:
-            raise ValueError('Enter a full name, or a Comp Express dancer ID. For compound surnames, use Last name, First name.')
+            raise ValueError('Enter a full name, or a Ballroom Comp Express dancer ID. For compound surnames, use Last name, First name.')
         first, last = parts
     if not first or not last:
         raise ValueError('Enter both a first and last name.')
@@ -57,21 +57,21 @@ def collect(params, fetcher, progress=None):
                     if own_partners & partners:
                         linked.append((candidate['id'], result, own_partners))
                 if len(linked) != 1:
-                    raise ValueError('Partnership checks could not identify one unique matching dancer. Select a Comp Express suggestion or enter a dancer ID.')
+                    raise ValueError('Partnership checks could not identify one unique matching dancer. Select a Ballroom Comp Express suggestion or enter a dancer ID.')
                 aid, bce, allowed_partners = linked[0]
                 warnings.append('Multiple profiles matched this name. The identity was linked using shared partnerships; O2CM events without a verified shared partner were excluded.')
             elif exact and not aid:
                 aid = exact[0]['id']
             elif not exact and not aid:
-                warnings.append('No exact Comp Express identity matched this name; only O2CM matches can be included.')
+                warnings.append('No exact Ballroom Comp Express identity matched this name; only O2CM matches can be included.')
         except core.Cancelled:
             raise
         except ValueError as exc:
             if 'Partnership checks' in str(exc):
                 raise
             if len(candidates) > 1 and not aid:
-                raise ValueError('Multiple matching profiles could not be checked reliably. Select a suggestion or enter a Comp Express dancer ID.') from exc
-            warnings.append(f'Comp Express name lookup unavailable: {exc}')
+                raise ValueError('Multiple matching profiles could not be checked reliably. Select a suggestion or enter a Ballroom Comp Express dancer ID.') from exc
+            warnings.append(f'Ballroom Comp Express name lookup unavailable: {exc}')
     if bce is None and ((source in ('bce', 'all') and (aid or source == 'bce')) or (source == 'o2cm' and aid)):
         try:
             cids = core.parse_cids(params['cids']) if source == 'bce' and params.get('cids') else None
@@ -87,10 +87,10 @@ def collect(params, fetcher, progress=None):
         except Exception as exc:
             if source != 'all':
                 raise
-            warnings.append(f'Comp Express results unavailable: {exc}')
+            warnings.append(f'Ballroom Comp Express results unavailable: {exc}')
     if source in ('all', 'o2cm'):
         if not name:
-            raise ValueError('Could not resolve that Comp Express ID to a name. Enter the full O2CM name instead.')
+            raise ValueError('Could not resolve that Ballroom Comp Express ID to a name. Enter the full O2CM name instead.')
         first, last = o2_name if o2_name and core.norm(' '.join(o2_name)) == core.norm(name) else split_name(name)
         if source == 'all' and not candidate_check and bce:
             try:
@@ -98,7 +98,7 @@ def collect(params, fetcher, progress=None):
                               if core.norm(candidate['name']) == core.norm(name)]
             except ValueError:
                 allowed_partners = {core.norm(p) for record in bce['records'] for p in core.split_people(record.partner)}
-                warnings.append('Name ambiguity could not be checked; only O2CM partnerships shared with this Comp Express ID were included.')
+                warnings.append('Name ambiguity could not be checked; only O2CM partnerships shared with this Ballroom Comp Express ID were included.')
         if source == 'all' and len(candidates) > 1 and bce:
             allowed_partners = {core.norm(p) for record in bce['records'] for p in core.split_people(record.partner)}
             warnings.append('Matching names were checked against shared partnerships. Unverified O2CM partnerships were excluded.')
@@ -111,7 +111,7 @@ def collect(params, fetcher, progress=None):
                     raise
                 allowed_partners = {core.norm(p) for record in bce['records'] for p in core.split_people(record.partner)}
                 o2cm = o2.collect(first, last, fetcher, partner=partner, progress=progress, allowed_partners=allowed_partners)
-                warnings.append('Repeated O2CM names were resolved using verified Comp Express partnerships only.')
+                warnings.append('Repeated O2CM names were resolved using verified Ballroom Comp Express partnerships only.')
             if source == 'o2cm':
                 return {**o2cm, 'aid': aid}
         except core.Cancelled:
@@ -136,12 +136,12 @@ def collect(params, fetcher, progress=None):
             seen[key] = record.source
             raw.append((record, field))
     if bce and not bce['records']:
-        warnings.append('No Comp Express events matched this search.')
+        warnings.append('No Ballroom Comp Express events matched this search.')
     if o2cm and not o2cm['records']:
         warnings.append('No O2CM events matched this exact name.')
     if duplicates:
         warnings.append(f'{duplicates} identical cross-source event record(s) were counted once.')
-    warnings.insert(0, 'Unified data combines exact-name matches across Comp Express and O2CM. Multiple matching profiles are checked using shared partnerships. Review differently titled duplicate events; O2CM roles remain unverified and do not contribute YCN points.')
+    warnings.insert(0, 'Unified data combines exact-name matches across Ballroom Comp Express and O2CM. Multiple matching profiles are checked using shared partnerships. Review differently titled duplicate events; O2CM roles remain unverified and do not contribute YCN points.')
     raw.sort(key=lambda pair: (pair[0].date, str(pair[0].cid), str(pair[0].eid)))
     return {'status': 'ok' if raw else 'no_all_results', 'name': name, 'aid': aid,
             'raw_events': raw, 'records': [record for record, _ in raw],

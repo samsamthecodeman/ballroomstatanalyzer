@@ -1,4 +1,4 @@
-"""O2CM public results importer. Provider IDs never overlap Comp Express IDs."""
+"""O2CM public results importer. Provider IDs never overlap Ballroom Comp Express IDs."""
 import json
 import re
 import time
@@ -16,7 +16,7 @@ class AmbiguousName(ValueError):
     pass
 CODE = re.compile(r"^[A-Za-z0-9_-]{2,30}$")
 HEAT = re.compile(r"^[0-9A-Fa-f]{1,16}$")
-WARNING = ("O2CM histories match exact names, not Comp Express IDs. People with the same name may appear; "
+WARNING = ("O2CM histories match exact names, not Ballroom Comp Express IDs. People with the same name may appear; "
            "verify competitions and partners. Leader/follower roles are unverified, so O2CM events do not contribute YCN points.")
 
 
@@ -130,7 +130,7 @@ def load_history(first, last, fetcher, force=False):
     if html is None:
         if cached:
             return cached["data"], ["O2CM is unavailable; showing the last successfully cached history."]
-        raise ValueError("O2CM could not be reached from this server. Comp Express searches are still available. Please try O2CM again later.")
+        raise ValueError("O2CM could not be reached from this server. Ballroom Comp Express searches are still available. Please try O2CM again later.")
     comps = parse_history(html)
     data = {"first": first, "last": last, "comps": comps, "version": VERSION}
     fetcher.store.put_external("o2cm", "profile", key, data)

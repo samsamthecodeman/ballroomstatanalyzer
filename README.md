@@ -19,19 +19,19 @@ Ballroom Stats Analyzer uses results from [Ballroom Comp Express](https://ballro
 ## Getting started
 
 1. Open **[bsa.sam-moran.com](https://bsa.sam-moran.com)**.
-2. Use the default **Unified data** search to include both providers, or choose **Comp Express** or **O2CM**.
-3. Enter your full name or Comp Express dancer ID in the **Name or dancer ID** box. Comp Express suggestions include locations and IDs to distinguish people with the same name. To find an ID, open a dancer's Comp Express results and copy the number after `aid=` in the URL.
+2. Use the default **Unified data** search to include both providers, or choose **BCE** (Ballroom Comp Express) or **O2CM**.
+3. Enter your full name or Ballroom Comp Express dancer ID in the **Name or dancer ID** box. Ballroom Comp Express suggestions include locations and IDs to distinguish people with the same name. To find an ID, open a dancer's Ballroom Comp Express results and copy the number after `aid=` in the URL.
 4. Select **Analyze**, then explore the charts, tables, and filters.
 
-The website resolves selected names to dancer IDs to keep analyses focused and reduce traffic to Comp Express. A shared results index speeds up repeat searches. A first-time dancer lookup or results not yet cached may still need downloads. If someone else is running an analysis, your search may wait in the queue.
+The website resolves selected names to dancer IDs to keep analyses focused and reduce traffic to Ballroom Comp Express. A shared results index speeds up repeat searches. A first-time dancer lookup or results not yet cached may still need downloads. If someone else is running an analysis, your search may wait in the queue.
 
 ## Understanding your results
 
 ### O2CM results
 
-Select **O2CM** and enter the full name used at registration in the shared search box. For compound surnames, use `Last name, First name`. A Comp Express ID can also resolve the name to search on O2CM; it is not an O2CM identifier. Optional competition codes, such as `mit26`, and the partner filter can narrow a search.
+Select **O2CM** and enter the full name used at registration in the shared search box. For compound surnames, use `Last name, First name`. A Ballroom Comp Express ID can also resolve the name to search on O2CM; it is not an O2CM identifier. Optional competition codes, such as `mit26`, and the partner filter can narrow a search.
 
-**Unified data**, selected by default, combines exact-name matches across both providers. Whenever multiple profiles match, shared partnerships are used to resolve the identity. If there is no unique partnership-supported match, choose a Comp Express suggestion or enter a dancer ID. In ambiguous searches, only O2CM events with verified shared partners are included. O2CM's public name-history search can include other people with the same name and may omit additional competitor records for double-entered dancers, so review the returned competitions and partners.
+**Unified data**, selected by default, combines exact-name matches across both providers. Whenever multiple profiles match, shared partnerships are used to resolve the identity. If there is no unique partnership-supported match, choose a Ballroom Comp Express suggestion or enter a dancer ID. In ambiguous searches, only O2CM events with verified shared partners are included. O2CM's public name-history search can include other people with the same name and may omit additional competitor records for double-entered dancers, so review the returned competitions and partners.
 
 Each event retains its source and scoresheet link. Identical cross-source records are counted once; differently titled versions of the same event may still appear separately. Competition ID/code filters are available when a single source is selected. If one provider is unavailable, Unified data keeps the other provider's results and displays a warning.
 
@@ -59,7 +59,7 @@ A multi-dance event contributes its overall placement to each listed dance. Thes
 
 The YCN section estimates points using the rules implemented in the application. It separates leader and follower roles, explains how individual events counted, and lets you adjust ambiguous level names.
 
-Treat these totals as a reference when reviewing your competition history. They are not an official eligibility determination. LilacDB totals are not imported automatically and may include competitions outside Comp Express.
+Treat these totals as a reference when reviewing your competition history. They are not an official eligibility determination. LilacDB totals are not imported automatically and may include competitions outside Ballroom Comp Express.
 
 ## Exporting results
 
@@ -72,7 +72,7 @@ After an analysis completes, select **Export CSV** or **Export PDF** beneath the
 
 Both formats include **all events matching your current filters**, regardless of the on-screen row limit. The PDF does not include the dashboard's YCN calculations or opponent-comparison tables.
 
-Exports use the completed analysis and make no additional requests to Comp Express. Completed results expire from server memory after approximately 30 minutes; rerun the search if an export reports that the results expired.
+Exports use the completed analysis and make no additional requests to Ballroom Comp Express. Completed results expire from server memory after approximately 30 minutes; rerun the search if an export reports that the results expired.
 
 ## Data freshness and responsible use
 
@@ -89,7 +89,7 @@ The initial historical population can take hours or longer. Searches continue wo
 
 Dates use the end of a multi-day competition. Corrections made after the 30-day window can be refreshed manually by the maintainer. Failed refreshes preserve the last successful results, and background population resumes from saved progress after a restart. Missed weekly runs are picked up when the website resumes.
 
-Changing filters and exporting completed results make no upstream requests. Name suggestions use Comp Express's public dancer search and cache successful query responses for a week.
+Changing filters and exporting completed results make no upstream requests. Name suggestions use Ballroom Comp Express's public dancer search and cache successful query responses for a week.
 
 The website currently runs one analysis at a time, with other searches queued. Its configured defaults allow 20 search starts per visitor per hour and 200 across the website. Outbound request starts are spaced at least 0.6 seconds apart across download workers. These limits count searches, not the number of pages downloaded, and an uncached search can still read many pages.
 
@@ -99,7 +99,7 @@ Please avoid repeatedly starting the same analysis and use the cached results an
 
 Found an incorrect classification, missing result, or another problem? Open an [issue](https://github.com/samsamthecodeman/ballroomstatanalyzer/issues) with:
 
-- The dancer ID and relevant Comp Express competition/event URLs or IDs.
+- The dancer ID and relevant Ballroom Comp Express competition/event URLs or IDs.
 - What the website displayed and what you expected instead.
 - Steps to reproduce the issue and, if useful, a screenshot.
 
@@ -107,7 +107,7 @@ For classification problems, include the full event title and whether the couple
 
 ## Limitations
 
-- Coverage depends on available Comp Express results and the pages included in the analysis.
+- Coverage depends on available Ballroom Comp Express results and the pages included in the analysis.
 - Judging categories, roles, and levels may require interpretation, especially on older event layouts. Source-format changes can affect parsing.
 - Name-based comparisons may conflate different people with the same name or separate spelling variants.
 - Cached event pages may not reflect later source corrections.

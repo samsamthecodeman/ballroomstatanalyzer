@@ -109,7 +109,7 @@ def pdf_report(result, events, filters):
                       f"{key.title()}: {value}" for key, value in filters.items() if value) or "All search results"
     dates = sorted(e["date"] for e in events if e.get("date"))
     story = [p("BALLROOM STATS ANALYZER"), p(result.get("name") or "Dancer results", "ReportTitle"),
-             p(("Sources: Comp Express + O2CM" if combined else "Source: O2CM | Exact-name search" if o2cm else f"Dancer ID: {result.get('aid') or 'Not specified'}") + f" | Generated {generated}"),
+             p(("Sources: Ballroom Comp Express + O2CM" if combined else "Source: O2CM | Exact-name search" if o2cm else f"Dancer ID: {result.get('aid') or 'Not specified'}") + f" | Generated {generated}"),
              p(f"Scope: {scope}"),
              p(f"{len(events)} events across {len({e['cid'] for e in events})} competitions" +
                (f" | {dates[0]} to {dates[-1]}" if dates else "")), Spacer(1, 9)]
@@ -132,7 +132,7 @@ def pdf_report(result, events, filters):
     rows = [[p(label, "ReportHead") for label in ("Date / competition", "Event", "Judging / role", "Partner", "Place / field")]]
     for e in events:
         rows.append([p(f"{e.get('date') or 'Date unknown'}\n{e['comp']}" +
-                       (" | " + ("O2CM" if e.get("source") == "o2cm" else "Comp Express") if combined else ""), "ReportCell"),
+                       (" | " + ("O2CM" if e.get("source") == "o2cm" else "Ballroom Comp Express") if combined else ""), "ReportCell"),
                      p(e["event"], "ReportCell"), p(f"{e.get('category', '')} / {e.get('role', '')}", "ReportCell"),
                      p(e.get("partner") or "(solo)", "ReportCell"),
                      p(f"{e['place'] if e.get('place') is not None else '-'} / {e.get('entries', '-')}" +

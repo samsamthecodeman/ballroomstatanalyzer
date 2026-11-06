@@ -78,7 +78,7 @@ def parse_proxies(spec: str) -> list:
         for item in PROXY_PRESETS.get(part, [part]):
             nets.append(ipaddress.ip_network(item, strict=False))
     return nets
-SCAN_SLOT = threading.Semaphore(1)   # public mode: one search reads Comp Express at a time
+SCAN_SLOT = threading.Semaphore(1)   # public mode: one search reads Ballroom Comp Express at a time
 QUEUE: list[str] = []                # job ids waiting for the slot, in order
 RECENT: dict[str, list[float]] = {}  # visitor -> times they started searches
 ALL_STARTS: list[float] = []         # every search started, for the site-wide hourly cap
@@ -303,7 +303,7 @@ class Handler(BaseHTTPRequestHandler):
             aid = str(params.get("aid") or "").strip()[:12]
             source = params.get("source", "bce")
             if source not in ("bce", "o2cm", "all"):
-                return self._send(400, {"error": "Choose Comp Express, O2CM, or Unified data."})
+                return self._send(400, {"error": "Choose Ballroom Comp Express, O2CM, or Unified data."})
             params["partner"] = str(params.get("partner") or "").strip()[:100]
             params["cids"] = str(params.get("cids") or "").strip()[:200]
             if source == "o2cm":
@@ -607,14 +607,14 @@ svg.chart .dot:hover, svg.chart .dot:focus { fill: var(--red); stroke: var(--red
   <a class="brand" href="/" aria-label="Ballroom Stats Analyzer home">Ballroom Stats Analyzer</a>
   <form class="search" id="searchForm">
     <div class="source-toggle" role="group" aria-label="Results source">
-      <button type="button" id="sourceBce" aria-pressed="false">Comp Express</button>
+      <button type="button" id="sourceBce" aria-pressed="false" title="Ballroom Comp Express">BCE</button>
       <button type="button" id="sourceO2cm" aria-pressed="false">O2CM</button>
       <button type="button" id="sourceAll" aria-pressed="true">Unified data</button>
     </div>
     <input type="hidden" id="source" value="all">
     <input type="text" id="name" placeholder="Name or dancer ID" aria-label="Name or dancer ID" aria-describedby="dancerLookupStatus" list="dancerSuggestions" autocomplete="off">
     <datalist id="dancerSuggestions"></datalist>
-    <input type="text" id="aid" class="aid" aria-label="Comp Express dancer ID" title="Comp Express dancer ID" readonly hidden>
+    <input type="text" id="aid" class="aid" aria-label="Ballroom Comp Express dancer ID" title="Ballroom Comp Express dancer ID" readonly hidden>
     <details class="opts">
       <summary>Options</summary>
       <div class="panel">
@@ -633,9 +633,9 @@ svg.chart .dot:hover, svg.chart .dot:focus { fill: var(--red); stroke: var(--red
     <h1>Every heat, every final, every rival.</h1>
     <div class="intro">
       <p>Explore competition results from Ballroom Comp Express and O2CM, including placements over time and the dancers they’ve shared a floor with.</p>
-      <p id="idNote">Start typing a dancer’s name and choose a match to fill their ID automatically. You can also paste a dancer ID from a Comp Express results URL (the number after <code>aid=</code>).</p>
+      <p id="idNote">Start typing a dancer’s name and choose a match to fill their ID automatically. You can also paste a dancer ID from a Ballroom Comp Express results URL (the number after <code>aid=</code>).</p>
       <p id="nameOnlyNote" class="note">A name on its own works too, but the site doesn’t list who danced where, so the first name search reads every event on the site and can take a few hours. Pages are saved on your computer, so searching again is quick.</p>
-      <p id="partnerJoke" class="partner-joke hidden" title="Distinct partners counted by name in cached event results, including other entrants. Not a ranking of the entire Comp Express website."><span id="partnerLeader"></span></p>
+      <p id="partnerJoke" class="partner-joke hidden" title="Distinct partners counted by name in cached event results, including other entrants. Not a ranking of the entire Ballroom Comp Express website."><span id="partnerLeader"></span></p>
     </div>
   </div>
 
@@ -709,7 +709,7 @@ svg.chart .dot:hover, svg.chart .dot:focus { fill: var(--red); stroke: var(--red
     <section data-sec="ycn">
       <header class="sec-head c-head">
         <h2>YCN points</h2>
-        <p class="note">From the Comp Express results above, using <a href="https://ballroom.mit.edu/ycn-proficiency-points/" target="_blank" rel="noopener">MIT’s single-ladder YCN rules</a>, the same rules LilacDB follows. Seven or more points in a level closes that level for that dance. Honors the event-exclusion checkboxes; other filters do not affect YCN points.</p>
+        <p class="note">From the Ballroom Comp Express results above, using <a href="https://ballroom.mit.edu/ycn-proficiency-points/" target="_blank" rel="noopener">MIT’s single-ladder YCN rules</a>, the same rules LilacDB follows. Seven or more points in a level closes that level for that dance. Honors the event-exclusion checkboxes; other filters do not affect YCN points.</p>
       </header>
       <div class="sec-body c-body">
         <div class="tab-row"><span class="hint">Role</span><div class="tabs" id="ycnRoles"></div></div>
@@ -868,7 +868,7 @@ const VISITOR_ID = (() => {
   } catch { return fresh(); }
 })();
 
-// Public sites can require a dancer ID (a name-only search reads every event on Comp Express)
+// Public sites can require a dancer ID (a name-only search reads every event on Ballroom Comp Express)
 async function loadPartnerLeader(attempt = 0) {
   try {
     const response = await fetch("/api/partner-leader");
@@ -948,7 +948,7 @@ $("name").addEventListener("input", () => {
     dancerLookup.timer = setTimeout(() => lookupDancers(value), 500);
   } else {
     $("dancerLookupStatus").textContent = selectedSource() === "o2cm"
-      ? "Enter the full registration name or a Comp Express dancer ID. For compound surnames, use Last name, First name."
+      ? "Enter the full registration name or a Ballroom Comp Express dancer ID. For compound surnames, use Last name, First name."
       : "Type at least 3 characters and choose a dancer, or enter a dancer ID.";
   }
 });
@@ -960,16 +960,16 @@ function updateSource() {
   $("name").setAttribute("list", o2cm ? "" : "dancerSuggestions");
   $("fuzzy").disabled = o2cm;
   $("dancerLookupStatus").textContent = o2cm
-    ? "Enter a full name or Comp Express dancer ID. For compound surnames, use Last name, First name."
+    ? "Enter a full name or Ballroom Comp Express dancer ID. For compound surnames, use Last name, First name."
     : selectedSource() === "all"
-    ? "Unified data combines matching names. Multiple profiles are checked using shared partnerships. IDs refer to Comp Express."
-    : "Type a name and choose a dancer, or enter a Comp Express dancer ID.";
+    ? "Unified data combines matching names. Multiple profiles are checked using shared partnerships. IDs refer to Ballroom Comp Express."
+    : "Type a name and choose a dancer, or enter a Ballroom Comp Express dancer ID.";
   $("cids").disabled = selectedSource() === "all";
   if ($("cids").disabled) $("cids").value = "";
   $("cids").placeholder = o2cm ? "All, or mit26, big23" : "All, or e.g. 150-250";
   $("competitionFilterLabel").textContent = o2cm ? "O2CM competition codes" : "Comp ids to scan";
   $("idNote").textContent = o2cm
-    ? "Enter the full name used for O2CM registration. A Comp Express ID can also resolve the name. Check the returned partners and competitions."
+    ? "Enter the full name used for O2CM registration. A Ballroom Comp Express ID can also resolve the name. Check the returned partners and competitions."
     : "Search by name or dancer ID. Unified data includes both providers; shared partnerships help distinguish matching names.";
   for (const [id, value] of [["sourceBce", "bce"], ["sourceO2cm", "o2cm"], ["sourceAll", "all"]]) {
     $(id).setAttribute("aria-pressed", String(selectedSource() === value));
@@ -1202,7 +1202,7 @@ function render() {
   const span = dates.length ? `, ${fmtDate(dates[0])} to ${fmtDate(dates[dates.length - 1])}` : "";
   const alias = d.matched_as.filter((m) => norm(m) !== norm(d.name));
   $("whoSub").textContent = `${comps.size} comp${comps.size === 1 ? "" : "s"}${span}.` +
-    (d.source === "all" ? " Sources: Comp Express + O2CM." : d.source === "o2cm" ? " Source: O2CM." : " Source: Ballroom Comp Express.") +
+    (d.source === "all" ? " Sources: Ballroom Comp Express + O2CM." : d.source === "o2cm" ? " Source: O2CM." : " Source: Ballroom Comp Express.") +
     (alias.length ? ` Listed as ${alias.join(", ")}.` : "") +
     (isFiltered() ? " Filters are on." : "");
   renderMarks(evs);
@@ -1553,7 +1553,7 @@ function renderYcn() {
   $("ycnTable").insertAdjacentHTML("afterend", `<div class="ycn-legend"><span><i class="sw sw-out"></i>7 or more: that level is closed for this dance</span><span>Hover a number to see where the points came from</span></div>`);
 
   // LilacDB comparison
-  $("ycnLilac").innerHTML = `LilacDB comparison isn’t connected yet. You can <a href="https://db.lilacdancecenter.com/proficiency" target="_blank" rel="noopener">look up ${esc(state.data.name)} on LilacDB</a> to compare by hand; its totals can be higher because it also includes comps that weren’t run on Comp Express.`;
+  $("ycnLilac").innerHTML = `LilacDB comparison isn’t connected yet. You can <a href="https://db.lilacdancecenter.com/proficiency" target="_blank" rel="noopener">look up ${esc(state.data.name)} on LilacDB</a> to compare by hand; its totals can be higher because it also includes comps that weren’t run on Ballroom Comp Express.`;
 
   // Level names that depend on the comp
   const amb = new Map();
@@ -1760,7 +1760,7 @@ def main():
     ap.add_argument("--port", type=int, default=None, help="Port to listen on (default 8765)")
     ap.add_argument("--cache", default=str(HERE / "bce_cache"), help="Folder for saved pages")
     ap.add_argument("--delay", type=float, default=None,
-                    help="Seconds between requests to Comp Express (default 0.4, or 0.6 with --public)")
+                    help="Seconds between requests to Ballroom Comp Express (default 0.4, or 0.6 with --public)")
     ap.add_argument("--allow-name-search", action="store_true",
                     help="With --public, also allow name-only searches (these read every event on the site)")
     ap.add_argument("--no-background-cache", action="store_true",
