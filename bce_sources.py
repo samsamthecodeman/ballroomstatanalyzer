@@ -141,7 +141,7 @@ def collect(params, fetcher, progress=None):
         warnings.append('No O2CM events matched this exact name.')
     if duplicates:
         warnings.append(f'{duplicates} identical cross-source event record(s) were counted once.')
-    warnings.insert(0, 'All data combines exact-name matches across Comp Express and O2CM. Multiple matching profiles are checked using shared partnerships. Review differently titled duplicate events; O2CM roles remain unverified and do not contribute YCN points.')
+    warnings.insert(0, 'Unified data combines exact-name matches across Comp Express and O2CM. Multiple matching profiles are checked using shared partnerships. Review differently titled duplicate events; O2CM roles remain unverified and do not contribute YCN points.')
     raw.sort(key=lambda pair: (pair[0].date, str(pair[0].cid), str(pair[0].eid)))
     return {'status': 'ok' if raw else 'no_all_results', 'name': name, 'aid': aid,
             'raw_events': raw, 'records': [record for record, _ in raw],

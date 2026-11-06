@@ -23,6 +23,9 @@ const context = vm.createContext({
   fetch: async () => ({ok: true, json: async () => ({dancers: matches})}),
 });
 const start = source.indexOf('const dancerLookup =');
+assert.match(source, /id="source" value="all"/);
+assert.match(source, /id="sourceAll" aria-pressed="true">Unified data/);
+element('source').value = 'all';
 vm.runInContext(source.slice(start, source.indexOf('$("searchForm").addEventListener', start)), context);
 (async () => {
   await context.lookupDancers('Sam');
@@ -85,7 +88,7 @@ vm.runInContext(source.slice(start, source.indexOf('$("searchForm").addEventList
   element('name').value = 'Sam Example';
   await element('searchForm').listeners.submit({preventDefault() {}});
   assert.equal(payload.name, 'Sam Example');
-  assert.equal(payload.aid, '', 'All data must let the backend resolve duplicate names using partnerships');
+  assert.equal(payload.aid, '', 'Unified data must let the backend resolve duplicate names using partnerships');
   element('source').value = 'o2cm';
   element('name').value = 'Jonny Lu';
   await element('searchForm').listeners.submit({preventDefault() {}});

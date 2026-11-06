@@ -19,7 +19,7 @@ Ballroom Stats Analyzer uses results from [Ballroom Comp Express](https://ballro
 ## Getting started
 
 1. Open **[bsa.sam-moran.com](https://bsa.sam-moran.com)**.
-2. Choose **Comp Express**, **O2CM**, or **All data**.
+2. Use the default **Unified data** search to include both providers, or choose **Comp Express** or **O2CM**.
 3. Enter your full name or Comp Express dancer ID in the **Name or dancer ID** box. Comp Express suggestions include locations and IDs to distinguish people with the same name. To find an ID, open a dancer's Comp Express results and copy the number after `aid=` in the URL.
 4. Select **Analyze**, then explore the charts, tables, and filters.
 
@@ -31,9 +31,9 @@ The website resolves selected names to dancer IDs to keep analyses focused and r
 
 Select **O2CM** and enter the full name used at registration in the shared search box. For compound surnames, use `Last name, First name`. A Comp Express ID can also resolve the name to search on O2CM; it is not an O2CM identifier. Optional competition codes, such as `mit26`, and the partner filter can narrow a search.
 
-**All data** combines exact-name matches across both providers. Whenever multiple profiles match, shared partnerships are used to resolve the identity. If there is no unique partnership-supported match, choose a Comp Express suggestion or enter a dancer ID. In ambiguous searches, only O2CM events with verified shared partners are included. O2CM's public name-history search can include other people with the same name and may omit additional competitor records for double-entered dancers, so review the returned competitions and partners.
+**Unified data**, selected by default, combines exact-name matches across both providers. Whenever multiple profiles match, shared partnerships are used to resolve the identity. If there is no unique partnership-supported match, choose a Comp Express suggestion or enter a dancer ID. In ambiguous searches, only O2CM events with verified shared partners are included. O2CM's public name-history search can include other people with the same name and may omit additional competitor records for double-entered dancers, so review the returned competitions and partners.
 
-Each event retains its source and scoresheet link. Identical cross-source records are counted once; differently titled versions of the same event may still appear separately. Competition ID/code filters are available when a single source is selected. If one provider is unavailable, All data keeps the other provider's results and displays a warning.
+Each event retains its source and scoresheet link. Identical cross-source records are counted once; differently titled versions of the same event may still appear separately. Competition ID/code filters are available when a single source is selected. If one provider is unavailable, Unified data keeps the other provider's results and displays a warning.
 
 O2CM results include the published overall placements, tied places, field sizes, finals, and source scoresheet links. Cached competition pages are shared across name searches; known histories participate in weekly refresh, recent competitions are refreshed, and older competitions are retained after a final successful refresh at the 30-day cutoff. The date is the date published in O2CM's dancer history. Initial searches download only competitions in the requested history; a full O2CM historical crawl is not enabled.
 

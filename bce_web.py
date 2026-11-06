@@ -303,7 +303,7 @@ class Handler(BaseHTTPRequestHandler):
             aid = str(params.get("aid") or "").strip()[:12]
             source = params.get("source", "bce")
             if source not in ("bce", "o2cm", "all"):
-                return self._send(400, {"error": "Choose Comp Express, O2CM, or All data."})
+                return self._send(400, {"error": "Choose Comp Express, O2CM, or Unified data."})
             params["partner"] = str(params.get("partner") or "").strip()[:100]
             params["cids"] = str(params.get("cids") or "").strip()[:200]
             if source == "o2cm":
@@ -606,11 +606,11 @@ svg.chart .dot:hover, svg.chart .dot:focus { fill: var(--red); stroke: var(--red
   <div class="brand">Ballroom Stats Analyzer</div>
   <form class="search" id="searchForm">
     <div class="source-toggle" role="group" aria-label="Results source">
-      <button type="button" id="sourceBce" aria-pressed="true">Comp Express</button>
+      <button type="button" id="sourceBce" aria-pressed="false">Comp Express</button>
       <button type="button" id="sourceO2cm" aria-pressed="false">O2CM</button>
-      <button type="button" id="sourceAll" aria-pressed="false">All data</button>
+      <button type="button" id="sourceAll" aria-pressed="true">Unified data</button>
     </div>
-    <input type="hidden" id="source" value="bce">
+    <input type="hidden" id="source" value="all">
     <input type="text" id="name" placeholder="Name or dancer ID" aria-label="Name or dancer ID" aria-describedby="dancerLookupStatus" list="dancerSuggestions" autocomplete="off">
     <datalist id="dancerSuggestions"></datalist>
     <input type="hidden" id="aid">
@@ -959,7 +959,7 @@ function updateSource() {
   $("dancerLookupStatus").textContent = o2cm
     ? "Enter a full name or Comp Express dancer ID. For compound surnames, use Last name, First name."
     : selectedSource() === "all"
-    ? "All data combines matching names. Multiple profiles are checked using shared partnerships. IDs refer to Comp Express."
+    ? "Unified data combines matching names. Multiple profiles are checked using shared partnerships. IDs refer to Comp Express."
     : "Type a name and choose a dancer, or enter a Comp Express dancer ID.";
   $("cids").disabled = selectedSource() === "all";
   if ($("cids").disabled) $("cids").value = "";
@@ -967,7 +967,7 @@ function updateSource() {
   $("competitionFilterLabel").textContent = o2cm ? "O2CM competition codes" : "Comp ids to scan";
   $("idNote").textContent = o2cm
     ? "Enter the full name used for O2CM registration. A Comp Express ID can also resolve the name. Check the returned partners and competitions."
-    : "Search by name or dancer ID. Choose All data to include both providers; shared partnerships help distinguish matching names.";
+    : "Search by name or dancer ID. Unified data includes both providers; shared partnerships help distinguish matching names.";
   for (const [id, value] of [["sourceBce", "bce"], ["sourceO2cm", "o2cm"], ["sourceAll", "all"]]) {
     $(id).setAttribute("aria-pressed", String(selectedSource() === value));
   }
@@ -976,6 +976,7 @@ $("source").addEventListener("change", updateSource);
 for (const [id, value] of [["sourceBce", "bce"], ["sourceO2cm", "o2cm"], ["sourceAll", "all"]]) {
   $(id).addEventListener("click", () => { $("source").value = value; updateSource(); });
 }
+updateSource();
 
 $("searchForm").addEventListener("submit", async (e) => {
   e.preventDefault();
