@@ -589,6 +589,8 @@ select { height: 36px; padding: 0 30px 0 10px; border: 1px solid var(--ink); bor
 
 /* ---------- tables ---------- */
 .scroll { overflow-x: auto; }
+#upcomingResults td, #upcomingResults th { white-space: normal; vertical-align: top; }
+#upcomingResults table { min-width: 680px; }
 table { border-collapse: collapse; width: 100%; font-size: 15px; }
 th, td { padding: 10px 16px 10px 0; text-align: left; vertical-align: baseline; border-bottom: 1px solid var(--hair); white-space: nowrap; }
 th:last-child, td:last-child { padding-right: 0; }
@@ -1308,7 +1310,11 @@ let upcomingSequence = 0;
 let upcomingHistories = [];
 function meetingSummary(history) {
   if (!history) return "Ambiguous registered name — history not merged.";
-  return `${history.meetings} previous opposing entries: ${history.wins} wins, ${history.losses} losses, ${history.ties} ties, ${history.unplaced} without comparable placements. ${history.together} past entries together.` + (history.ambiguous_events ? ` ${history.ambiguous_events} ambiguous historical events excluded.` : '');
+  const count = (n, word, plural = word + 's') => `${n} ${n === 1 ? word : plural}`;
+  return (history.meetings ? `${count(history.meetings, 'previous meeting')}: ${count(history.wins, 'win')}, ${count(history.losses, 'loss', 'losses')}, ${count(history.ties, 'tie')}.` : 'No previous meetings in this analyzed history.') +
+    (history.unplaced ? ` ${history.unplaced} without comparable placements.` : '') +
+    (history.together ? ` ${count(history.together, 'past entry', 'past entries')} together.` : '') +
+    (history.ambiguous_events ? ` ${count(history.ambiguous_events, 'ambiguous historical event')} excluded.` : '');
 }
 function recentMeetings(history) {
   if (!history?.matches?.length) return "";
