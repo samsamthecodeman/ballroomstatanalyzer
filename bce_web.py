@@ -696,6 +696,25 @@ svg.chart .dot:hover, svg.chart .dot:focus { fill: var(--red); stroke: var(--red
       </div>
     </div>
 
+    <section data-sec="compare">
+      <header class="sec-head c-head"><h2>Compare dancers</h2><p class="note">Compare another dancer using the same results source, dashboard filters, and field-beaten mode. Overall histories may cover different events and dates.</p></header>
+      <div class="sec-body c-body">
+        <form id="compareForm" class="tools">
+          <label>Other dancer <input id="compareName" type="text" placeholder="Name or dancer ID" aria-label="Other dancer name or ID" list="compareSuggestions" autocomplete="off" required></label>
+          <datalist id="compareSuggestions"></datalist>
+          <button type="submit" class="btn" id="compareGo">Compare</button>
+          <button type="button" class="btn quiet hidden" id="compareStop">Stop comparison</button>
+          <button type="button" class="linkbtn" id="compareClear">Clear comparison</button>
+        </form>
+        <p id="compareStatus" class="note" role="status" aria-live="polite">Look up another dancer to compare their results with yours.</p>
+        <p id="compareWarnings" class="note"></p>
+        <div id="compareStats" class="scroll"></div>
+        <p id="compareMeetings" class="note"></p>
+        <div id="compareEvents" class="scroll"></div>
+        <p class="note">Head-to-head matches use the same provider, competition, and event IDs. Dancing in the same entry counts as “Together,” not a win or loss. Differently listed events across providers are not guessed to be the same event. Exports above contain the primary dancer’s results.</p>
+      </div>
+    </section>
+
     <section data-sec="chart">
       <header class="sec-head c-head">
         <h2>Over time</h2>
@@ -1111,6 +1130,7 @@ function handleResult(res) {
     return fail(`Read ${res.events_scanned} events and didn’t find “${res.name || "that dancer"}”.${s} Check the spelling as it appears on the site, or turn on “Match similar spellings” in Options.`);
   }
   res.events.forEach((e, i) => { e.order = i; });
+  clearComparison();
   $("aid").value = res.aid || "";
   $("aid").hidden = !res.aid;
   dancerLookup.selectedName = res.aid ? $("name").value.trim() : "";
@@ -1180,13 +1200,14 @@ function passesEventExclusions(e) {
   return (!f.excludeUncontested || e.entries !== 1) && (!f.excludeThreeCouplePodiums || !threeCouplePodium);
 }
 
-function filtered() {
+function filterEvents(events) {
   const f = state.filters;
-  return state.data.events.filter((e) =>
+  return events.filter((e) =>
     (!f.style || e.style === f.style) && (!f.level || e.level === f.level) &&
     (!f.category || e.category === f.category) && (!f.division || e.division === f.division) && (!f.partner || (e.partner || "(solo)") === f.partner) &&
     passesEventExclusions(e));
 }
+function filtered() { return filterEvents(state.data.events); }
 
 function fieldBeaten(e) {
   return state.fieldMode === "finals" ? e.final_percentile ?? null : e.percentile;
@@ -1231,6 +1252,141 @@ function headToHead(evs, by) {
   return [...map.values()];
 }
 
+// ---------------- Dancer comparison ----------------
+const comparison = {data: null, job: null, sequence: 0, lookupSequence: 0, timer: null, matches: new Map(), selected: null};
+function comparisonBusy(busy) {
+  $("compareGo").disabled = busy;
+  $("goBtn").disabled = busy;
+  $("compareStop").classList.toggle("hidden", !busy);
+}
+function clearComparison() {
+  ++comparison.sequence; ++comparison.lookupSequence;
+  clearTimeout(comparison.timer);
+  if (comparison.job) fetch("/api/cancel", {method: "POST", headers: {"Content-Type": "application/json", "X-Visitor": VISITOR_ID}, body: JSON.stringify({id: comparison.job})}).catch(() => {});
+  comparison.job = null; comparison.data = null; comparison.selected = null; comparison.matches.clear();
+  $("compareName").value = "";
+  $("compareSuggestions").replaceChildren();
+  $("compareStatus").textContent = "Look up another dancer to compare their results with yours.";
+  comparisonBusy(false); renderComparison();
+}
+async function comparisonLookup(query) {
+  const sequence = ++comparison.lookupSequence;
+  const response = await fetch("/api/dancers?q=" + encodeURIComponent(query), {headers: {"X-Visitor": VISITOR_ID}});
+  const data = await response.json();
+  if (sequence !== comparison.lookupSequence) return [];
+  if (!response.ok) throw new Error(data.error || "Name lookup failed. Try a dancer ID.");
+  comparison.matches.clear();
+  $("compareSuggestions").replaceChildren(...data.dancers.map(dancer => {
+    const option = document.createElement("option");
+    option.value = `${dancer.name} — ID ${dancer.id}`; option.label = dancer.location || "Ballroom Comp Express";
+    comparison.matches.set(option.value, dancer); return option;
+  }));
+  return data.dancers;
+}
+$("compareName").addEventListener("input", () => {
+  clearTimeout(comparison.timer); ++comparison.lookupSequence;
+  const query = $("compareName").value.trim(), match = comparison.matches.get(query);
+  comparison.selected = match || null;
+  if (match) {
+    $("compareName").value = match.name;
+    $("compareStatus").textContent = `Selected ${match.name} · BCE ID ${match.id}`;
+    $("compareSuggestions").replaceChildren(); return;
+  }
+  $("compareSuggestions").replaceChildren();
+  if (query.length >= 3 && !/^\d+$/.test(query) && state.data?.source !== "o2cm") {
+    comparison.timer = setTimeout(() => comparisonLookup(query).catch(error => { $("compareStatus").textContent = error.message; }), 500);
+  }
+});
+$("compareClear").addEventListener("click", clearComparison);
+$("compareStop").addEventListener("click", () => {
+  clearComparison(); $("compareStatus").textContent = "Comparison stopped.";
+});
+$("compareForm").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  if (!state.data) return;
+  const sequence = ++comparison.sequence;
+  ++comparison.lookupSequence; clearTimeout(comparison.timer);
+  let name = $("compareName").value.trim(), aid = comparison.selected?.name === name ? String(comparison.selected.id) : "";
+  const source = state.data.source || "bce";
+  if (!name) return;
+  if (/^\d+$/.test(name)) { aid = name; name = ""; }
+  comparison.data = null; renderComparison();
+  comparisonBusy(true); $("compareStatus").textContent = "Looking up comparison dancer…";
+  try {
+    if (!aid && source !== "o2cm") {
+      let matches;
+      try { matches = await comparisonLookup(name); }
+      catch (error) { if (source === "bce") throw error; matches = []; }
+      if (sequence !== comparison.sequence) return;
+      const exact = matches.filter(dancer => norm(dancer.name) === norm(name));
+      if (exact.length === 1) { aid = String(exact[0].id); name = exact[0].name; }
+      else if (source === "bce") throw new Error("Choose a matching dancer suggestion or enter their BCE ID.");
+    }
+    if ((aid && state.data.aid && String(state.data.aid) === aid) ||
+        (source === "o2cm" && !aid && norm(name) === norm(state.data.name))) throw new Error("Choose a different dancer to compare with yourself.");
+    const response = await fetch("/api/start", {method: "POST", headers: {"Content-Type": "application/json", "X-Visitor": VISITOR_ID},
+      body: JSON.stringify({source, name, aid, fuzzy: false, partner: "", cids: ""})});
+    const started = await response.json();
+    if (!response.ok) throw new Error(started.error || "The comparison could not start.");
+    if (sequence !== comparison.sequence) {
+      fetch("/api/cancel", {method: "POST", headers: {"Content-Type": "application/json", "X-Visitor": VISITOR_ID}, body: JSON.stringify({id: started.id})}).catch(() => {}); return;
+    }
+    comparison.job = started.id;
+    async function check() {
+      try {
+        const response = await fetch("/api/status?id=" + encodeURIComponent(started.id));
+        const job = await response.json();
+        if (sequence !== comparison.sequence) return;
+        if (!response.ok) throw new Error(job.error || "The comparison expired. Try again.");
+        if (job.state === "running") {
+          $("compareStatus").textContent = job.message || "Loading comparison…";
+          comparison.timer = setTimeout(check, 500); return;
+        }
+        comparison.job = null;
+        if (job.state !== "done") throw new Error(job.error || "Comparison stopped.");
+        if (job.result.status !== "ok" || !job.result.events.length) throw new Error("No comparison results found. Check the name, source, or dancer ID. " + (job.result.warnings || []).join(" "));
+        if (job.result.aid && state.data.aid && String(job.result.aid) === String(state.data.aid)) throw new Error("Both searches resolved to the same dancer. Choose another profile.");
+        comparison.data = job.result;
+        $("compareStatus").textContent = `Comparing ${state.data.name} with ${job.result.name}.`;
+        renderComparison(); comparisonBusy(false);
+      } catch (error) { if (sequence === comparison.sequence) { comparison.job = null; $("compareStatus").textContent = error.message; comparisonBusy(false); } }
+    }
+    check();
+  } catch (error) { if (sequence === comparison.sequence) { $("compareStatus").textContent = error.message; comparisonBusy(false); } }
+});
+function sharedComparisonEvents(ours, theirs) {
+  const key = event => JSON.stringify([event.source || "bce", String(event.cid), String(event.eid)]);
+  const index = new Map(theirs.map(event => [key(event), event]));
+  return ours.flatMap(event => {
+    const other = index.get(key(event));
+    if (!other) return [];
+    const together = norm(event.entry) === norm(other.entry);
+    const outcome = together ? "Together" : event.place == null || other.place == null ? "Unplaced"
+      : event.place < other.place ? "Win" : event.place > other.place ? "Loss" : "Tie";
+    return [{event, other, outcome}];
+  });
+}
+function renderComparison() {
+  for (const id of ["compareStats", "compareMeetings", "compareEvents", "compareWarnings"]) $(id).textContent = "";
+  if (!comparison.data || !state.data) return;
+  const ours = filtered(), theirs = filterEvents(comparison.data.events);
+  const a = summary(ours), b = summary(theirs);
+  $("compareWarnings").textContent = (comparison.data.warnings || []).join(" ");
+  const metrics = [
+    ["Events", a.events, b.events], ["Competitions", new Set(ours.map(e=>e.cid)).size, new Set(theirs.map(e=>e.cid)).size],
+    ["Wins", a.wins, b.wins], ["Win rate", pct(a.events ? 100*a.wins/a.events : null), pct(b.events ? 100*b.wins/b.events : null)],
+    ["Top-3 finishes", a.podiums, b.podiums], ["Finals", a.finals, b.finals],
+    ["Finals rate", pct(a.events ? 100*a.finals/a.events : null), pct(b.events ? 100*b.finals/b.events : null)],
+    ["Average place", r1(a.avgPlace), r1(b.avgPlace)], ["Average entry count", r1(a.avgField), r1(b.avgField)],
+    [state.fieldMode === "finals" ? "Finals field beaten" : "Total field beaten", pct(a.avgPct), pct(b.avgPct)]
+  ];
+  $("compareStats").innerHTML = `<table><thead><tr><th>Metric</th><th>${esc(state.data.name)} (you)</th><th>${esc(comparison.data.name)}</th></tr></thead><tbody>${metrics.map(row=>`<tr>${row.map((value,i)=>`<${i?'td':'th'}>${esc(value)}</${i?'td':'th'}>`).join('')}</tr>`).join('')}</tbody></table>`;
+  const shared = sharedComparisonEvents(ours, theirs);
+  const count = outcome => shared.filter(row=>row.outcome===outcome).length;
+  $("compareMeetings").textContent = `${shared.length} shared events after filters: ${count("Win")} wins, ${count("Loss")} losses, ${count("Tie")} ties, ${count("Together")} together, ${count("Unplaced")} without comparable placements. Outcomes are from your perspective.`;
+  $("compareEvents").innerHTML = shared.length ? `<table><thead><tr><th>Date / competition</th><th>Event</th><th>Your place</th><th>Their place</th><th>Outcome</th></tr></thead><tbody>${shared.map(({event:e,other,outcome})=>`<tr><td>${esc(e.date || "Date unknown")} / ${esc(e.comp)}</td><td><a href="${esc(e.url)}" target="_blank" rel="noopener">${esc(e.event)}</a></td><td>${e.place ?? "–"}</td><td>${other.place ?? "–"}</td><td>${outcome}</td></tr>`).join('')}</tbody></table>` : `<p class="note">No shared event IDs were found in these filtered histories. You can still compare their overall statistics above.</p>`;
+}
+
 // ---------------- Rendering ----------------
 function render() {
   $("fieldMode").value = state.fieldMode;
@@ -1253,6 +1409,7 @@ function render() {
   renderRivals(evs);
   renderYcn();
   renderEvents(evs);
+  renderComparison();
 }
 const isFiltered = () => Object.values(state.filters).some(Boolean);
 function fmtDate(iso) {

@@ -11,6 +11,7 @@ Ballroom Stats Analyzer uses results from [Ballroom Comp Express](https://ballro
 - **Competition history:** view placements, wins, podiums, finals, average placement, and percentage of the field beaten.
 - **Performance trends:** track results over time and compare statistics by category, style, dance, level, division, partner, and age group.
 - **Matchup analysis:** explore head-to-head comparisons by dancer or couple, plus opponents placed above and below you.
+- **Compare dancers:** look up a second dancer for side-by-side statistics and a list of shared events with wins, losses, ties, and entries danced together.
 - **Judging categories:** distinguish couple-judged, leader-judged, follower-judged, and solo events.
 - **Filters:** narrow results by category, style, level, division, and partner, and optionally exclude uncontested events.
 - **YCN points estimates:** review role-specific calculations, event-by-event explanations, and interpretations of ambiguous level names.
@@ -26,6 +27,10 @@ Ballroom Stats Analyzer uses results from [Ballroom Comp Express](https://ballro
 The website resolves selected names to dancer IDs to keep analyses focused and reduce traffic to Ballroom Comp Express. A shared results index speeds up repeat searches. A first-time dancer lookup or results not yet cached may still need downloads. If someone else is running an analysis, your search may wait in the queue.
 
 ## Understanding your results
+
+### Comparing dancers
+
+After analyzing your own results, open **Compare dancers** and enter another dancer's name or BCE ID. Choose a suggestion when multiple people share a name. The comparison uses your analyzed source (Unified data, BCE, or O2CM), the dashboard filters, and the selected field-beaten calculation. Overall statistics can cover different competitions and dates; shared-event outcomes require matching provider, competition, and event IDs. Entries danced together are shown separately from wins, losses, and ties. You can stop a running comparison or clear it without losing the primary dashboard. Exports contain the primary dancer's results.
 
 ### O2CM results
 
