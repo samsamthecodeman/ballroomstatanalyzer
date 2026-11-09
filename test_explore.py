@@ -82,6 +82,21 @@ class ExploreTests(unittest.TestCase):
         self.assertEqual({s for row in only['rows'] for s in row['sources']},{'o2cm'})
         self.assertEqual(explore.texas_leaderboard(self.store,{'source':'o2cm'})['rows'],[])
 
+    def test_multiple_styles_union_empty_all_and_invalid_selection(self):
+        import json
+        data=self.store.get_events([(1,2)])[(1,2)]
+        data[2]='Amateur Bronze International Latin Rumba'
+        self.store.put_event(1,2,data)
+        standard=explore.texas_leaderboard(self.store,{'styles':json.dumps(['International Standard'])})
+        both=explore.texas_leaderboard(self.store,{'styles':json.dumps(['International Standard','International Latin'])})
+        all_styles=explore.texas_leaderboard(self.store,{'styles':'[]'})
+        self.assertEqual(next(r for r in standard['rows'] if r['name']=='Sam Example')['wins'],1)
+        self.assertEqual(next(r for r in both['rows'] if r['name']=='Sam Example')['wins'],2)
+        self.assertEqual(both['rows'],all_styles['rows'])
+        for selection in ['invalid','"International Standard"','["unknown"]','[{}]']:
+            with self.subTest(selection=selection),self.assertRaises(ValueError):
+                explore.texas_leaderboard(self.store,{'styles':selection})
+
     def test_unique_cross_provider_mirrors_merge_and_count_once(self):
         # Remove unrelated duplicate-name fixtures to establish a unique competition pair.
         with self.store.connect() as db:db.execute('DELETE FROM competitions WHERE cid IN (2,3)')

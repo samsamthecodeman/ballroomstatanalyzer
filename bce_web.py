@@ -151,8 +151,9 @@ def run_job(job_id: str, job: dict, params: dict) -> None:
     for rec, results in data["raw_events"]:
         # PARTNER_LEADERBOARD.add_entries(results)
         ev = asdict(rec)
+        ev["rounds_danced"] = results.get(rec.entry, {}).get("rounds")
         ev["field"] = [{"entry": entry, "people": core.split_people(entry),
-                        "place": r["place"], "made_final": r["made_final"]}
+                        "place": r["place"], "made_final": r["made_final"], "rounds": r.get("rounds")}
                        for entry, r in results.items()]
         ev["final_percentile"] = bce_export.finals_percentile(ev)
         events.append(ev)
@@ -161,6 +162,7 @@ def run_job(job_id: str, job: dict, params: dict) -> None:
         "name": data.get("name") or params.get("name") or "",
         "aid": data.get("aid", params.get("aid")),
         "source": params.get("source", "bce"),
+        "scope_limited": bool(params.get("cids") or params.get("partner")),
         "warnings": data.get("warnings", []),
         "alternatives": data.get("alternatives", []),
         "matched_as": sorted(data["spellings"]),
@@ -258,7 +260,7 @@ class Handler(BaseHTTPRequestHandler):
             return self._send(200, PAGE, "text/html")
         if url.path in ("/api/catalog", "/api/competition", "/api/texas"):
             import bce_explore
-            query = {k:v[0][:100] for k,v in parse_qs(url.query).items()}
+            query = {k:v[0][:(1000 if k == 'styles' else 100)] for k,v in parse_qs(url.query).items()}
             try:
                 if url.path == "/api/catalog":
                     return self._send(200, {"competitions":bce_explore.catalog(FETCHER.store, query.get('source','all'))})
@@ -703,7 +705,7 @@ svg.chart .dot:hover, svg.chart .dot:focus { fill: var(--red); stroke: var(--red
       <label>Region <select id="leaderRegion"><option value="texas">Texas</option><option value="national">U.S. national</option></select></label>
       <label>Year <select id="texasYear" aria-label="Leaderboard year"><option value="">All years</option></select></label>
       <label>Category <select id="texasCategory"><option value="">All</option></select></label>
-      <label>Style <select id="texasStyle"><option value="">All</option></select></label>
+      <div><span class="hint">Style</span><details class="opts" id="texasStylePicker"><summary id="texasStyleSummary" aria-label="Leaderboard styles">All styles</summary><div class="panel"><div id="texasStyle" role="group" aria-label="Choose leaderboard styles"></div><p class="hint">Check one or more styles. No styles checked includes all styles.</p><button type="button" class="linkbtn" id="clearTexasStyles">Clear styles</button></div></details></div>
       <label>Level <select id="texasLevel"><option value="">All</option></select></label>
       <label><input type="checkbox" id="texasUncontested"> Exclude uncontested events</label>
       <label>Name <input id="texasName" type="search" placeholder="Find a published name"></label>
@@ -714,12 +716,12 @@ svg.chart .dot:hover, svg.chart .dot:focus { fill: var(--red); stroke: var(--red
   </div>
   <div id="scoresPanel" class="hidden">
     <h1 style="font-size:48px">Competition scores</h1>
-    <p>Choose a competition and type a dancer’s full name to see all their results. Unified data includes both BCE and O2CM; no dancer analysis is required.</p>
-    <div class="tools"><label>Find competition <input id="scoreSearch" type="search" placeholder="Name, year, or city"></label>
+    <p>Enter your name to load the competitions found in your result history, then select one to see all your results. Unified data includes both BCE and O2CM.</p>
+    <form id="scoreDancerForm" class="tools"><label>Dancer name <input id="scoreDancer" type="text" aria-label="Competition dancer name" list="scoreDancers" placeholder="Type your full name" autocomplete="off" required></label><datalist id="scoreDancers"></datalist><button type="submit" id="scoreLoad" class="btn">Load my competitions</button><button type="button" id="scoreStop" class="btn quiet hidden">Stop lookup</button></form>
+    <div class="tools" style="margin-top:16px"><label>Filter your competitions <input id="scoreSearch" type="search" placeholder="Name, year, or city"></label>
     <label>Competition <select id="scoreCompetition" aria-label="Competition"></select></label>
-    <label>Dancer name <input id="scoreDancer" type="text" aria-label="Competition dancer name" list="scoreDancers" placeholder="Type a dancer’s full name" autocomplete="off"></label><datalist id="scoreDancers"></datalist>
-    <label>Or view one event <select id="scoreEvent" aria-label="Competition event"></select></label></div>
-    <p class="note">Choose a full name from this competition’s suggestions. All matching entries are shown, including multiple partnerships. Published names are not verified identities; review partners if several people share a name. Exact cross-source mirrors count once; differently titled duplicate events may remain separate. Competitions are combined only when their name and date match uniquely across providers.</p>
+    <label>Or view one of your events <select id="scoreEvent" aria-label="Competition event"></select></label></div>
+    <p class="note">Choose a matching dancer suggestion when available. Your full result history is used, without dashboard filters. An unrestricted completed dancer analysis can be reused automatically. Coverage depends on published results and the selected providers; a heat-sheet registration without results is not counted as a competed event. Exact cross-source mirrors count once; differently titled duplicates may remain separate.</p>
     <p id="scoreStatus" class="note" role="status"></p><div id="scoreTable" class="scroll"></div>
     <p class="note">Placements shown are overall event results. Preliminary-round placements may be tied callback ranks. Use the official score-sheet link for individual judges’ marks and corrections.</p>
   </div>
@@ -1361,6 +1363,7 @@ function headToHead(evs, by) {
 
 // ---------------- Competition browsing ----------------
 let catalogData = [], scoreSequence = 0, texasSequence = 0, exploreSource = "all", scoreDancerTimer;
+let scoreHistory = null, scoreHistorySequence = 0, scoreHistoryJob = null, scorePollTimer, scoreSelected = null, scoreMatches = new Map();
 async function exploreApi(url) {
   const response = await fetch(url);
   const data = await response.json();
@@ -1374,12 +1377,13 @@ function selectPage(page) {
   $("dancerLookupStatus").classList.toggle("hidden",page!=="analysis");
   document.querySelectorAll("[data-page]").forEach(button=>button.setAttribute("aria-pressed",String(button.dataset.page===page)));
   if (page === "texas") loadTexas();
-  if (page === "scores" && !catalogData.length) loadCatalog();
+  if (page === "scores" && (!catalogData.length || !scoreHistory)) loadCatalog();
 }
 document.querySelectorAll("[data-page]").forEach(button=>button.addEventListener("click",()=>selectPage(button.dataset.page)));
 document.querySelectorAll("[data-explore-source]").forEach(button=>button.addEventListener("click",()=>{
   exploreSource=button.dataset.exploreSource;
   document.querySelectorAll("[data-explore-source]").forEach(b=>b.setAttribute("aria-pressed",String(b===button)));
+  resetScoreHistory();
   catalogData=[]; ++scoreSequence;
   $("texasYear").innerHTML='<option value="">All years</option>';
   $("scoreDancers").innerHTML='';
@@ -1389,74 +1393,149 @@ document.querySelectorAll("[data-explore-source]").forEach(button=>button.addEve
 for (const [id,values] of [["texasCategory",["Couple-judged","Mixed proficiency – leader judged","Mixed proficiency – follower judged","Solo"]],
   ["texasStyle",["International Standard","International Latin","American Smooth","American Rhythm","Nightclub / Social","Cabaret / Show","Other"]],
   ["texasLevel",["Newcomer / Beginner","Pre-Bronze","Bronze","Silver","Gold","Novice","Pre-Champ","Championship","Open","Syllabus / Mixed","Other"]]]) {
-  for (const value of values) { const option = document.createElement("option"); option.value=value; option.textContent=value; $(id).append(option); }
+  for (const value of values) {
+    if (id === "texasStyle") {
+      const label = document.createElement("label"), input = document.createElement("input"), text = document.createElement("span");
+      label.className="check"; input.type="checkbox"; input.value=value; text.textContent=value;
+      label.append(input,text); $(id).append(label);
+    } else {const option = document.createElement("option"); option.value=value; option.textContent=value; $(id).append(option);}
+  }
 }
+$("texasCategory").value="Couple-judged";
+function selectedLeaderboardStyles() {return [...$("texasStyle").querySelectorAll("input:checked")].map(input=>input.value);}
+function updateLeaderboardStyles() {
+  const styles=selectedLeaderboardStyles();
+  $("texasStyleSummary").textContent=styles.length===0?'All styles':styles.length===1?styles[0]:`${styles.length} styles selected`;
+}
+$("texasStyle").addEventListener("change",updateLeaderboardStyles);
+$("clearTexasStyles").addEventListener("click",()=>{$("texasStyle").querySelectorAll("input").forEach(input=>{input.checked=false;});updateLeaderboardStyles();});
 async function loadTexas() {
   const sequence = ++texasSequence;
   $("texasStatus").textContent = "Reading verified Texas results…";
-  const query = new URLSearchParams({source:exploreSource,region:$("leaderRegion").value,year:$("texasYear").value,category:$("texasCategory").value,style:$("texasStyle").value,level:$("texasLevel").value,q:$("texasName").value,excludeUncontested:String($("texasUncontested").checked)});
+  const query = new URLSearchParams({source:exploreSource,region:$("leaderRegion").value,year:$("texasYear").value,category:$("texasCategory").value,styles:JSON.stringify(selectedLeaderboardStyles()),level:$("texasLevel").value,q:$("texasName").value,excludeUncontested:String($("texasUncontested").checked)});
+  $("texasStylePicker").open=false;
   try {
     const data = await exploreApi("/api/texas?"+query);
     if (sequence !== texasSequence) return;
     if ($("texasYear").options.length === 1) for (const year of data.years) {const option=document.createElement("option");option.value=year;option.textContent=year;$("texasYear").append(option);}
     $("texasStatus").textContent = `${data.competitions.length} included ${data.region==='texas'?'Texas':'U.S.'} provider competition records · ${data.total_names} published names. Showing ${data.rows.length} of ${data.matching_names} matching names (maximum 500). ${data.unknown_venues} cached competitions still lack verified venue metadata and are excluded. ${data.deduplicated} exact cross-source entrant records counted once. ${data.unclassified_events} unclassified/team events excluded; O2CM mixed roles are not guessed. Coverage is limited to cached, verified venues, not every U.S. competition.`;
-    $("texasTable").innerHTML = `<table><thead><tr><th>Rank</th><th>Published name</th><th>Wins</th><th>Events</th><th>Competitions</th><th>Sources</th></tr></thead><tbody>${data.rows.map(r=>`<tr><td>${r.rank}</td><td>${esc(r.name)}</td><td>${r.wins}</td><td>${r.events}</td><td>${r.competitions}</td><td>${r.sources.map(s=>s==='bce'?'BCE':'O2CM').join(' + ')}</td></tr>`).join('')}</tbody></table>`;
+    $("texasTable").innerHTML = `<table><thead><tr><th>Rank</th><th>Published name</th><th>Wins</th><th>Events</th><th>Competitions</th></tr></thead><tbody>${data.rows.map(r=>`<tr><td>${r.rank}</td><td>${esc(r.name)}</td><td>${r.wins}</td><td>${r.events}</td><td>${r.competitions}</td></tr>`).join('')}</tbody></table>`;
     $("texasCoverage").innerHTML = data.competitions.map(c=>`<p>${esc(c.date)} — ${esc(c.name)} · ${esc(c.city)}, ${esc(c.state)} · ${c.provider==='bce'?'BCE':'O2CM'}${c.source?` · <a href="${esc(c.source)}" target="_blank" rel="noopener">Venue source</a>`:''}</p>`).join('') || '<p>No verified Texas results match these filters yet.</p>';
   } catch(error) {if(sequence===texasSequence) $("texasStatus").textContent=error.message;}
 }
 $("texasForm").addEventListener("submit",event=>{event.preventDefault();loadTexas();});
+function resetScoreHistory() {
+  ++scoreHistorySequence; ++scoreSequence;clearTimeout(scorePollTimer);clearTimeout(scoreDancerTimer);
+  if(scoreHistoryJob) fetch('/api/cancel',{method:'POST',headers:{'Content-Type':'application/json','X-Visitor':VISITOR_ID},body:JSON.stringify({id:scoreHistoryJob})}).catch(()=>{});
+  scoreHistoryJob=null;scoreHistory=null;scoreSelected=null;
+  $("scoreLoad").disabled=false;$("scoreStop").classList.add("hidden");
+  $("scoreCompetition").innerHTML='';$("scoreEvent").innerHTML='';$("scoreTable").textContent='';
+}
 async function loadCatalog() {
   const sequence=++scoreSequence;
-  try {const data=await exploreApi('/api/catalog?source='+exploreSource);if(sequence!==scoreSequence)return;catalogData=data.competitions;fillCompetitions();}
-  catch(error){$("scoreStatus").textContent=error.message;}
+  try {
+    const data=await exploreApi('/api/catalog?source='+exploreSource);
+    if(sequence!==scoreSequence)return;
+    catalogData=data.competitions;
+    if(!scoreHistory && state.data && !state.data.scope_limited && (state.data.source||'bce')===exploreSource &&
+       (!$("scoreDancer").value.trim() || norm($("scoreDancer").value)===norm(state.data.name))) {
+      scoreHistory=state.data;$("scoreDancer").value=state.data.name;
+    }
+    if(scoreHistory) {
+      const known=new Set(catalogData.flatMap(c=>c.members.map(String)));
+      for(const event of scoreHistory.events) if(!known.has(String(event.cid))){
+        catalogData.push({cid:event.cid,members:[event.cid],name:event.comp||('Competition '+event.cid),date:event.date,city:'',state:'',source_label:event.source==='o2cm'?'O2CM':'BCE'});known.add(String(event.cid));
+      }
+    }
+    fillCompetitions();
+  }catch(error){if(sequence===scoreSequence)$("scoreStatus").textContent=error.message;}
 }
 function fillCompetitions() {
   ++scoreSequence;
-  const search=norm($("scoreSearch").value);
-  const matches=catalogData.filter(c=>norm([c.name,c.date,c.city,c.state].join(' ')).includes(search));
-  $("scoreCompetition").innerHTML = '<option value="">Choose a competition</option>'+matches.map(c=>`<option value="${c.cid}">${esc(c.date)} · ${esc(c.name)} · ${esc(c.source_label)}${c.state?' · '+esc(c.state):''}</option>`).join('');
-  $("scoreEvent").innerHTML='';$("scoreDancers").innerHTML='';$("scoreTable").textContent='';$("scoreStatus").textContent=`${matches.length} cached competitions available.`;
+  const search=norm($("scoreSearch").value), ids=new Set((scoreHistory?.events||[]).map(e=>String(e.cid)));
+  const matches=catalogData.filter(c=>c.members.some(id=>ids.has(String(id))) && norm([c.name,c.date,c.city,c.state].join(' ')).includes(search));
+  $("scoreCompetition").innerHTML='<option value="">Choose your competition</option>'+matches.map(c=>`<option value="${c.cid}">${esc(c.date)} · ${esc(c.name)} · ${esc(c.source_label)}</option>`).join('');
+  $("scoreCompetition").disabled=!scoreHistory;
+  $("scoreEvent").innerHTML='';$("scoreTable").textContent='';
+  $("scoreStatus").textContent=scoreHistory ? `${scoreHistory.name} · ${matches.length} competitions found in this result history. Select a competition.` : 'Enter your full name and select Load my competitions.';
 }
 $("scoreSearch").addEventListener("input",fillCompetitions);
-$("scoreCompetition").addEventListener("change",async()=>{
-  const sequence=++scoreSequence,cid=$("scoreCompetition").value,requestedSource=exploreSource;
-  $("scoreEvent").innerHTML='';$("scoreTable").textContent='';
-  if(!cid)return;
+$("scoreDancer").addEventListener("input",()=>{
+  const value=$("scoreDancer").value.trim(), selected=scoreMatches.get(value);
+  resetScoreHistory();scoreMatches.clear();fillCompetitions();$("scoreDancers").replaceChildren();
+  if(selected){scoreSelected=selected;$("scoreDancer").value=selected.name;$("scoreStatus").textContent=`Selected ${selected.name} · BCE ID ${selected.id}. Select Load my competitions.`;return;}
+  if(value.length<3 || exploreSource==='o2cm' || /^\d+$/.test(value))return;
+  const sequence=scoreHistorySequence;
+  scoreDancerTimer=setTimeout(async()=>{
+    try {
+      const data=await exploreApi('/api/dancers?q='+encodeURIComponent(value));
+      if(sequence!==scoreHistorySequence)return;
+      $("scoreDancers").replaceChildren(...data.dancers.map(d=>{
+        const option=document.createElement('option');option.value=`${d.name} — ID ${d.id}`;option.label=d.location||'';scoreMatches.set(option.value,d);return option;
+      }));
+    }catch(error){if(sequence===scoreHistorySequence)$("scoreStatus").textContent=error.message;}
+  },500);
+});
+$("scoreStop").addEventListener('click',()=>{resetScoreHistory();fillCompetitions();$("scoreStatus").textContent='Lookup stopped.';});
+$("scoreDancerForm").addEventListener('submit',async event=>{
+  event.preventDefault();
+  let name=$("scoreDancer").value.trim(), aid=scoreSelected?.name===name?String(scoreSelected.id):'';
+  if(!name)return;
+  if(/^\d+$/.test(name)){aid=name;name='';}
+  resetScoreHistory();const sequence=scoreHistorySequence;
+  $("scoreLoad").disabled=true;$("scoreStop").classList.remove('hidden');$("scoreStatus").textContent='Loading your full competition history…';
   try {
-    const data=await exploreApi('/api/competition?source='+exploreSource+'&cid='+encodeURIComponent(cid));
-    if(cid!==$("scoreCompetition").value || requestedSource!==exploreSource)return;
-    $("scoreEvent").innerHTML='<option value="">Choose an event</option>'+data.events.map(e=>`<option value="${e.eid}">${esc(e.title)} · ${e.source==='bce'?'BCE':'O2CM'}</option>`).join('');
-    $("scoreDancers").innerHTML=data.dancers.map(name=>`<option value="${esc(name)}"></option>`).join('');
-    if($("scoreDancer").value.trim().length>=3) { loadDancerScores(); return; }
-    $("scoreStatus").textContent=`${data.name} · ${data.events.length} published events in cache. Last competition refresh: ${data.updated?new Date(data.updated*1000).toLocaleString():'Pending'}.`;
-  }catch(error){if(sequence===scoreSequence)$("scoreStatus").textContent=error.message;}
+    if(!aid && exploreSource!=='o2cm') {
+      let candidates=[];
+      try {candidates=(await exploreApi('/api/dancers?q='+encodeURIComponent(name))).dancers;}catch(error){if(exploreSource==='bce')throw error;}
+      if(sequence!==scoreHistorySequence)return;
+      const exact=candidates.filter(d=>norm(d.name)===norm(name));
+      if(exact.length===1){aid=String(exact[0].id);name=exact[0].name;}
+      else if(exploreSource==='bce')throw new Error('Choose a matching dancer suggestion or enter a BCE ID.');
+    }
+    const response=await fetch('/api/start',{method:'POST',headers:{'Content-Type':'application/json','X-Visitor':VISITOR_ID},body:JSON.stringify({source:exploreSource,name,aid,cids:'',partner:'',fuzzy:false})});
+    const started=await response.json();if(!response.ok)throw new Error(started.error||'The history lookup could not start.');
+    if(sequence!==scoreHistorySequence){fetch('/api/cancel',{method:'POST',headers:{'Content-Type':'application/json','X-Visitor':VISITOR_ID},body:JSON.stringify({id:started.id})}).catch(()=>{});return;}
+    scoreHistoryJob=started.id;
+    async function check(){
+      try{
+        const job=await exploreApi('/api/status?id='+encodeURIComponent(started.id));if(sequence!==scoreHistorySequence)return;
+        if(job.state==='running'){$("scoreStatus").textContent=job.message||'Loading…';scorePollTimer=setTimeout(check,500);return;}
+        scoreHistoryJob=null;
+        if(job.state!=='done' || job.result.status!=='ok')throw new Error(job.error||'No results found. Check the full name or dancer ID.');
+        scoreHistory=job.result;$("scoreDancer").value=scoreHistory.name;$("scoreSearch").value='';
+        $("scoreLoad").disabled=false;$("scoreStop").classList.add('hidden');await loadCatalog();
+      }catch(error){if(sequence===scoreHistorySequence){scoreHistoryJob=null;$("scoreStatus").textContent=error.message;$("scoreLoad").disabled=false;$("scoreStop").classList.add('hidden');}}
+    }
+    check();
+  }catch(error){if(sequence===scoreHistorySequence){$("scoreStatus").textContent=error.message;$("scoreLoad").disabled=false;$("scoreStop").classList.add('hidden');}}
 });
-$("scoreEvent").addEventListener("change",async()=>{
-  const sequence=++scoreSequence,cid=$("scoreCompetition").value,eid=$("scoreEvent").value;
-  clearTimeout(scoreDancerTimer); $("scoreDancer").value="";
-  $("scoreTable").textContent='';if(!eid)return;
-  try{
-    const data=await exploreApi(`/api/competition?source=${exploreSource}&cid=${encodeURIComponent(cid)}&eid=${encodeURIComponent(eid)}`);
-    if(sequence!==scoreSequence)return;
-    $("scoreStatus").textContent=`${data.title} · ${data.category} · ${data.entries} entries · ${data.rounds ?? 'Unknown'} rounds · ${data.source==='bce'?'BCE':'O2CM'}.`;
-    $("scoreTable").innerHTML=`<p><a href="${esc(data.url)}" target="_blank" rel="noopener">Official score sheet / judges’ marks</a></p><table><thead><tr><th>Place</th><th>Entry</th><th>Final</th><th>Rounds danced</th></tr></thead><tbody>${data.rows.map(r=>`<tr><td>${r.place??'–'}</td><td>${esc(r.entry)}</td><td>${r.made_final?'Yes':'No'}</td><td>${r.rounds??'–'}</td></tr>`).join('')}</tbody></table>`;
-  }catch(error){if(sequence===scoreSequence)$("scoreStatus").textContent=error.message;}
-});
-
-async function loadDancerScores() {
-  const sequence=++scoreSequence,cid=$("scoreCompetition").value,name=$("scoreDancer").value.trim();
-  $("scoreTable").textContent='';$("scoreEvent").value='';
-  if(!cid){$("scoreStatus").textContent='Choose a competition first.';return;}
-  if(name.length<3){$("scoreStatus").textContent='Type at least 3 characters and choose a full dancer name.';return;}
-  $("scoreStatus").textContent='Reading all competition results for this name…';
-  try{
-    const data=await exploreApi(`/api/competition?source=${exploreSource}&cid=${encodeURIComponent(cid)}&dancer=${encodeURIComponent(name)}`);
-    if(sequence!==scoreSequence)return;
-    $("scoreStatus").textContent=`${data.dancer} · ${data.name} · ${data.rows.length} matching event entries. ${data.deduplicated} identical cross-source records counted once.`+(data.ambiguous?' Multiple entries share this name in the same event; check partnerships.':'')+(!data.rows.length?' Choose the full published name from the suggestions.':'');
-    $("scoreTable").innerHTML=`<table><thead><tr><th>Event</th><th>Partner / entry</th><th>Place / field</th><th>Final</th><th>Rounds</th><th>Source</th></tr></thead><tbody>${data.rows.map(r=>`<tr><td class="wrap-ok"><a href="${esc(r.url)}" target="_blank" rel="noopener">${esc(r.event)}</a><br>${esc(r.category)}</td><td>${esc(r.partner||'(solo)')}<br><span class="hint">${esc(r.entry)}</span></td><td>${r.place??'–'} / ${r.entries}</td><td>${r.made_final?'Yes':'No'}</td><td>${r.rounds??'–'}</td><td>${r.source==='bce'?'BCE':'O2CM'}</td></tr>`).join('')}</tbody></table>`;
-  }catch(error){if(sequence===scoreSequence)$("scoreStatus").textContent=error.message;}
+function showDancerCompetition() {
+  const selected=catalogData.find(c=>String(c.cid)===$("scoreCompetition").value);
+  if(!selected||!scoreHistory)return;
+  const ids=new Set(selected.members.map(String));
+  const rows=scoreHistory.events.filter(e=>ids.has(String(e.cid)));
+  $("scoreStatus").textContent=`${scoreHistory.name} · ${selected.name} · ${rows.length} result entries.`+(scoreHistory.warnings?.length?' '+scoreHistory.warnings.join(' '):'');
+  $("scoreTable").innerHTML=`<table><thead><tr><th>Event</th><th>Partner</th><th>Place / field</th><th>Final</th><th>Rounds</th></tr></thead><tbody>${rows.map(r=>`<tr><td class="wrap-ok"><a href="${esc(r.url)}" target="_blank" rel="noopener">${esc(r.event)}</a><br>${esc(r.category)}</td><td>${esc(r.partner||'(solo)')}</td><td>${r.place??'–'} / ${r.entries}</td><td>${r.made_final?'Yes':'No'}</td><td>${r.rounds_danced??'–'}</td></tr>`).join('')}</tbody></table>`;
 }
-$("scoreDancer").addEventListener("input",()=>{++scoreSequence;clearTimeout(scoreDancerTimer);scoreDancerTimer=setTimeout(loadDancerScores,350);});
+function scoreEventKey(event){return JSON.stringify([String(event.cid),String(event.eid)]);}
+$("scoreCompetition").addEventListener('change',()=>{
+  ++scoreSequence;$("scoreEvent").innerHTML='';$("scoreTable").textContent='';
+  const comp=catalogData.find(c=>String(c.cid)===$("scoreCompetition").value);
+  if(!comp||!scoreHistory)return;
+  showDancerCompetition();
+  const events=new Map(scoreHistory.events.filter(e=>comp.members.map(String).includes(String(e.cid))).map(e=>[scoreEventKey(e),e]));
+  $("scoreEvent").innerHTML='<option value="">All your results</option>'+[...events].map(([key,event])=>`<option value="${esc(key)}">${esc(event.event)}</option>`).join('');
+});
+$("scoreEvent").addEventListener('change',()=>{
+  ++scoreSequence;const key=$("scoreEvent").value;
+  if(!key){showDancerCompetition();return;}
+  const event=scoreHistory?.events.find(e=>scoreEventKey(e)===key);
+  if(!event)return;
+  $("scoreStatus").textContent=`${event.event} · ${event.category} · ${event.entries} entries.`;
+  const rows=[...(event.field||[])].sort((a,b)=>(a.place==null)-(b.place==null)||(a.place??0)-(b.place??0)||a.entry.localeCompare(b.entry));
+  $("scoreTable").innerHTML=`<p><a href="${esc(event.url)}" target="_blank" rel="noopener">Official score sheet / judges’ marks</a></p><table><thead><tr><th>Place</th><th>Entry</th><th>Final</th><th>Rounds danced</th></tr></thead><tbody>${rows.map(r=>`<tr><td>${r.place??'–'}</td><td>${esc(r.entry)}</td><td>${r.made_final?'Yes':'No'}</td><td>${r.rounds??'–'}</td></tr>`).join('')}</tbody></table>`;
+});
 
 // ---------------- Upcoming competition ----------------
 let upcomingSequence = 0;

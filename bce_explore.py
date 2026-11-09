@@ -147,6 +147,13 @@ def competition(store,cid,eid=None,source='all',dancer=''):
 
 
 def texas_leaderboard(store,filters):
+    styles = [filters['style']] if filters.get('style') else []
+    if 'styles' in filters:
+        try: styles=json.loads(filters['styles'])
+        except (ValueError, TypeError): raise ValueError('Invalid style selection.')
+        allowed={name for name,_ in core.STYLE_PATTERNS}|{'Other'}
+        if not isinstance(styles,list) or len(styles)>len(allowed) or any(not isinstance(style,str) or style not in allowed for style in styles):
+            raise ValueError('Choose valid leaderboard styles.')
     source=checked_source(filters.get('source','all'));region=filters.get('region','texas')
     if region not in ('texas','national'):raise ValueError('Choose Texas or U.S. national.')
     key=(str(store.path),source)
@@ -165,7 +172,8 @@ def texas_leaderboard(store,filters):
         if str(comp['cid']) not in eligible_ids:continue
         if filters.get('year') and not (comp.get('date') or '').startswith(filters['year']):continue
         title=event['classified_title'];category=event['category']
-        if any(filters.get(k) and filters[k]!=v for k,v in [('category',category),('style',core.classify(title,core.STYLE_PATTERNS)),('level',core.classify(title,core.LEVEL_PATTERNS))]):continue
+        if styles and core.classify(title,core.STYLE_PATTERNS) not in styles:continue
+        if any(filters.get(k) and filters[k]!=v for k,v in [('category',category),('level',core.classify(title,core.LEVEL_PATTERNS))]):continue
         if filters.get('excludeUncontested')=='true' and event['entries']==1:continue
         if category=='Unclassified' or re.search(r'\b(team|formation)\b',title,re.I):skipped+=1;continue
         included[str(comp['cid'])]=comp
