@@ -74,8 +74,8 @@ const danceEvents = [
 context.renderBreakdown(danceEvents);
 assert.match(element('bdTabs').innerHTML, /data-k="dance" aria-pressed="true">Dance/);
 const table = element('bdTable').innerHTML;
-assert.match(table, /<td>Waltz<\/td><td class="num">2<\/td><td class="num">1<\/td><td class="num">100%<\/td><td class="num">2<\/td>/);
-assert.match(table, /<td>Tango<\/td><td class="num">1<\/td><td class="num">0<\/td>/);
+assert.match(table, /<td>Waltz<\/td><td class="num">2<\/td><td class="num positive">1<\/td><td class="num positive">100%<\/td><td class="num">2<\/td>/);
+assert.match(table, /<td>Tango<\/td><td class="num">1<\/td><td class="num ">0<\/td>/);
 assert.match(table, /<td>Unknown dance<\/td><td class="num">1<\/td>/);
 context.state.bdKey = 'category';
 context.renderBreakdown([{...danceEvents[0], category: 'Couple-judged'}, {...danceEvents[1], category: 'Couple-judged'}]);
@@ -83,6 +83,15 @@ assert.match(element('bdTable').innerHTML, /<td>Couple-judged<\/td><td class="nu
 context.state.bdKey = 'dance';
 context.renderBreakdown([]);
 assert.match(element('bdTable').innerHTML, /<tbody><\/tbody>/);
+context.state.bdKey = 'age';
+context.renderBreakdown(danceEvents);
+assert.equal(context.state.bdKey,'category');
+assert.doesNotMatch(element('bdTabs').innerHTML,/Age group|data-k="age"/);
+assert.equal(context.positiveClass(1),'positive');
+assert.equal(context.positiveClass('50%'),'positive');
+assert.equal(context.positiveClass(0),'');
+assert.equal(context.positiveClass(null),'');
+assert.equal(context.positiveClass(-1),'');
 console.log('Passed: dance breakdown statistics, multi-dance entries, duplicate dances, unknown dances, and existing categories.');
 
 context.state.filters = {};

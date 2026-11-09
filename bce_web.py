@@ -610,10 +610,10 @@ tr.flash td { background: var(--tint); box-shadow: inset 0 -2px 0 var(--red); }
 tr.detail td { background: var(--tint); white-space: normal; padding: 12px 16px; font-size: 14px; }
 .detail ul { margin: 0; padding-left: 18px; }
 .detail li { margin: 2px 0; }
-.w { color: var(--ink); font-weight: 600; }
+.w, .positive { color: var(--first-place); font-weight: 600; }
 .l { color: var(--red); font-weight: 600; }
 .bar-cell { display: flex; align-items: center; gap: 10px; }
-.bar-cell i { display: block; height: 4px; background: var(--ink); }
+.bar-cell i { display: block; height: 4px; background: var(--first-place); }
 .limit-foot:not(:empty) { margin-top: 12px; font-size: 13px; color: var(--grey); }
 .h2h-foot .note { margin-top: 12px !important; }
 
@@ -621,9 +621,9 @@ tr.detail td { background: var(--tint); white-space: normal; padding: 12px 16px;
 tr.grp td { font-size: 13px; font-weight: 600; color: var(--ink); padding-top: 20px; border-bottom: 1px solid var(--ink); }
 th.pt, td.pt { text-align: center; min-width: 72px; padding-right: 0; }
 td.pt-zero { color: var(--hair); }
-td.pt-some { font-weight: 600; }
-td.pt-out { background: var(--ink); color: var(--bg); font-weight: 700; }
-.sw.sw-out { background: var(--ink); }
+td.pt-some { color: var(--first-place); font-weight: 600; }
+td.pt-out { background: var(--first-place); color: var(--on-first-place); font-weight: 700; }
+.sw.sw-out { background: var(--first-place); }
 .ycn-legend { display: flex; flex-wrap: wrap; gap: 8px 24px; font-size: 13px; color: var(--grey); margin: 12px 0 4px; }
 .ycn-lilac { margin: 16px 0 0; max-width: 72ch; }
 details.ycn-more { margin-top: 24px; border-top: 1px solid var(--ink); padding-top: 12px; }
@@ -639,9 +639,10 @@ ul.ycn-log li { margin: 4px 0; }
 svg.chart { width: 100%; height: auto; display: block; }
 svg.chart text { fill: var(--grey); font: 12px var(--font); }
 svg.chart .grid { stroke: var(--hair); stroke-width: 1; }
-svg.chart .line { fill: none; stroke: var(--ink); stroke-width: 2; }
-svg.chart .dot { fill: var(--bg); stroke: var(--ink); stroke-width: 2; cursor: pointer; }
-svg.chart .dot:hover, svg.chart .dot:focus { fill: var(--red); stroke: var(--red); outline: none; }
+svg.chart .line { fill: none; stroke: var(--first-place); stroke-width: 2; }
+svg.chart .dot { fill: var(--bg); stroke: var(--first-place); stroke-width: 2; cursor: pointer; }
+svg.chart .dot:hover, svg.chart .dot:focus { fill: var(--first-place); stroke: var(--first-place); outline: none; }
+.chart-tip.positive { color: var(--first-place); }
 .chart-tip { min-height: 1.5em; font-size: 14px; color: var(--grey); margin-top: 12px; }
 
 @media (prefers-reduced-motion: reduce) { .track div { transition: none; } }
@@ -1276,6 +1277,7 @@ function filtered() { return filterEvents(state.data.events); }
 function fieldBeaten(e) {
   return state.fieldMode === "finals" ? e.final_percentile ?? null : e.percentile;
 }
+function positiveClass(value) { return Number.parseFloat(value)>0 ? "positive" : ""; }
 function summary(evs) {
   const placed = evs.filter((e) => e.place != null);
   return {
@@ -1335,7 +1337,7 @@ function selectPage(page) {
 }
 document.querySelectorAll("[data-page]").forEach(button=>button.addEventListener("click",()=>selectPage(button.dataset.page)));
 for (const [id,values] of [["texasCategory",["Couple-judged","Mixed proficiency – leader judged","Mixed proficiency – follower judged","Solo"]],
-  ["texasStyle",["International Standard","International Latin","American Smooth","American Rhythm","Nightclub / Social","Cabaret / Show","Other"]],
+  ["texasStyle",["International Standard","International Latin","American Smooth","American Rhythm","Social","Country","Cabaret / Show","Other"]],
   ["texasLevel",["Newcomer / Beginner","Pre-Bronze","Bronze","Silver","Gold","Novice","Pre-Champ","Championship","Open","Syllabus / Mixed","Other"]]]) {
   for (const value of values) {
     if (id === "texasStyle") {
@@ -1363,7 +1365,7 @@ async function loadTexas() {
     if (sequence !== texasSequence) return;
     if ($("texasYear").options.length === 1) for (const year of data.years) {const option=document.createElement("option");option.value=year;option.textContent=year;$("texasYear").append(option);}
     $("texasStatus").textContent = `${data.competitions.length} included ${data.region==='texas'?'Texas':'U.S.'} provider competition records · ${data.total_names} published names. Showing ${data.rows.length} of ${data.matching_names} matching names (maximum 500). ${data.unknown_venues} cached competitions still lack verified venue metadata and are excluded. ${data.deduplicated} exact cross-source entrant records counted once. ${data.unclassified_events} unclassified/team events excluded; O2CM mixed roles are not guessed. Coverage is limited to cached, verified venues, not every U.S. competition.`;
-    $("texasTable").innerHTML = `<table><thead><tr><th>Rank</th><th>Published name</th><th>Wins</th><th>Events</th><th>Competitions</th></tr></thead><tbody>${data.rows.map(r=>`<tr><td>${r.rank}</td><td>${esc(r.name)}</td><td>${r.wins}</td><td>${r.events}</td><td>${r.competitions}</td></tr>`).join('')}</tbody></table>`;
+    $("texasTable").innerHTML = `<table><thead><tr><th>Rank</th><th>Published name</th><th>Wins</th><th>Events</th><th>Competitions</th></tr></thead><tbody>${data.rows.map(r=>`<tr><td>${r.rank}</td><td>${esc(r.name)}</td><td class="${positiveClass(r.wins)}">${r.wins}</td><td>${r.events}</td><td>${r.competitions}</td></tr>`).join('')}</tbody></table>`;
     $("texasCoverage").innerHTML = data.competitions.map(c=>`<p>${esc(c.date)} — ${esc(c.name)} · ${esc(c.city)}, ${esc(c.state)} · ${c.provider==='bce'?'BCE':'O2CM'}${c.source?` · <a href="${esc(c.source)}" target="_blank" rel="noopener">Venue source</a>`:''}</p>`).join('') || '<p>No verified Texas results match these filters yet.</p>';
   } catch(error) {if(sequence===texasSequence) $("texasStatus").textContent=error.message;}
 }
@@ -1467,7 +1469,7 @@ function showDancerCompetition() {
   if(!scoreHistory)return;
   const rows=scoreVisibleRows(),selected=catalogData.find(c=>String(c.cid)===$("scoreCompetition").value);
   $("scoreStatus").textContent=`${scoreHistory.name} · ${selected?selected.name:'All competitions'} · ${rows.length} result entries across ${new Set(rows.map(r=>String(r.cid))).size} provider competition records.`+(scoreHistory.warnings?.length?' '+scoreHistory.warnings.join(' '):'');
-  $("scoreTable").innerHTML=`<table><thead><tr><th>Date / competition</th><th>Event</th><th>Partner</th><th>Place / field</th><th>Final</th><th>Rounds</th></tr></thead><tbody>${rows.map(r=>`<tr><td>${esc(r.date)}<br>${esc(r.comp)}</td><td class="wrap-ok"><a href="${esc(r.url)}" target="_blank" rel="noopener">${esc(r.event)}</a><br>${esc(r.category)}</td><td>${esc(r.partner||'(solo)')}</td><td>${r.place??'–'} / ${r.entries}</td><td>${r.made_final?'Yes':'No'}</td><td>${r.rounds_danced??'–'}</td></tr>`).join('')}</tbody></table>`;
+  $("scoreTable").innerHTML=`<table><thead><tr><th>Date / competition</th><th>Event</th><th>Partner</th><th>Place / field</th><th>Final</th><th>Rounds</th></tr></thead><tbody>${rows.map(r=>`<tr><td>${esc(r.date)}<br>${esc(r.comp)}</td><td class="wrap-ok"><a href="${esc(r.url)}" target="_blank" rel="noopener">${esc(r.event)}</a><br>${esc(r.category)}</td><td>${esc(r.partner||'(solo)')}</td><td class="${r.made_final && r.place<=3?'positive':''}">${r.place??'–'} / ${r.entries}</td><td class="${r.made_final?'positive':''}">${r.made_final?'Yes':'No'}</td><td>${r.rounds_danced??'–'}</td></tr>`).join('')}</tbody></table>`;
 }
 function scoreEventKey(event){return JSON.stringify([String(event.cid),String(event.eid)]);}
 function populateScoreEvents() {
@@ -1484,7 +1486,7 @@ $("scoreEvent").addEventListener('change',()=>{
   if(!event)return;
   $("scoreStatus").textContent=`${event.event} · ${event.category} · ${event.entries} entries.`;
   const rows=[...(event.field||[])].sort((a,b)=>(a.place==null)-(b.place==null)||(a.place??0)-(b.place??0)||a.entry.localeCompare(b.entry));
-  $("scoreTable").innerHTML=`<p><a href="${esc(event.url)}" target="_blank" rel="noopener">Official score sheet / judges’ marks</a></p><table><thead><tr><th>Place</th><th>Entry</th><th>Final</th><th>Rounds danced</th></tr></thead><tbody>${rows.map(r=>`<tr><td>${r.place??'–'}</td><td>${esc(r.entry)}</td><td>${r.made_final?'Yes':'No'}</td><td>${r.rounds??'–'}</td></tr>`).join('')}</tbody></table>`;
+  $("scoreTable").innerHTML=`<p><a href="${esc(event.url)}" target="_blank" rel="noopener">Official score sheet / judges’ marks</a></p><table><thead><tr><th>Place</th><th>Entry</th><th>Final</th><th>Rounds danced</th></tr></thead><tbody>${rows.map(r=>`<tr><td class="${r.made_final && r.place<=3?'positive':''}">${r.place??'–'}</td><td>${esc(r.entry)}</td><td class="${r.made_final?'positive':''}">${r.made_final?'Yes':'No'}</td><td>${r.rounds??'–'}</td></tr>`).join('')}</tbody></table>`;
 });
 
 // ---------------- Upcoming competition ----------------
@@ -1522,8 +1524,8 @@ function renderUpcoming(data) {
     ${data.events.map(e=>`<details><summary>${esc(e.time)} — Event ${e.number}: ${esc(e.title)} (${esc(e.round)}) · ${e.entries ?? 'Unknown'} entries</summary>
       <p class="note">${esc(e.session)} · ${esc(e.role)} ${esc(e.partner)} · ${esc(e.category || '')}</p>
       ${!e.opponents.length ? `<p class="note">${e.entries === 1 ? 'Uncontested in this published round.' : 'Opponent data could not be matched. Check the official schedule and notices above.'}</p>` : e.opponents.map(o=>`<div style="margin:18px 0;border-top:1px solid var(--hair);padding-top:12px">
-        <h4>${esc(o.bib)} — ${esc(o.entry)}</h4><p class="note">This exact partnership: ${esc(meetingSummary(o.partnership_history))}</p>
-        ${o.people_history.map(p=>`<p><strong>${esc(p.name)}</strong> — ${esc(meetingSummary(p.history))}${p.history?.last_met ? ` Last met: ${esc(p.history.last_met)}.` : ''}</p>${recentMeetings(p.history)}`).join('')}
+        <h4>${esc(o.bib)} — ${esc(o.entry)}</h4><p class="note">This exact partnership: ${esc(meetingSummary(o.partnership_history)).replace(/(\d+) wins?/, (text,n)=>Number(n)>0?`<span class="positive">${text}</span>`:text)}</p>
+        ${o.people_history.map(p=>`<p><strong>${esc(p.name)}</strong> — ${esc(meetingSummary(p.history)).replace(/(\d+) wins?/, (text,n)=>Number(n)>0?`<span class="positive">${text}</span>`:text)}${p.history?.last_met ? ` Last met: ${esc(p.history.last_met)}.` : ''}</p>${recentMeetings(p.history)}`).join('')}
       </div>`).join('')}</details>`).join('')}`;
 }
 $("upcomingForm").addEventListener("submit", async event => {
@@ -1684,15 +1686,15 @@ function renderComparison() {
     [state.fieldMode === "finals" ? "Finals field beaten" : "Total field beaten", s=>pct(s.avgPct)]
   ];
   const summaries = columns.map(c=>summary(c.events));
-  $("compareStats").innerHTML = `<table><thead><tr><th>Metric</th>${columns.map((c,i)=>`<th>${esc(c.data.name)}${i===0?' (you)':''}</th>`).join('')}</tr></thead><tbody>${metrics.map(([label,value])=>`<tr><td>${esc(label)}</td>${columns.map((c,i)=>`<td>${esc(value(summaries[i],c.events))}</td>`).join('')}</tr>`).join('')}</tbody></table>`;
+  $("compareStats").innerHTML = `<table><thead><tr><th>Metric</th>${columns.map((c,i)=>`<th>${esc(c.data.name)}${i===0?' (you)':''}</th>`).join('')}</tr></thead><tbody>${metrics.map(([label,value])=>`<tr><td>${esc(label)}</td>${columns.map((c,i)=>`<td class="${['Wins','Win rate','Top-3 finishes','Finals','Finals rate','Total field beaten','Finals field beaten'].includes(label)?positiveClass(value(summaries[i],c.events)):''}">${esc(value(summaries[i],c.events))}</td>`).join('')}</tr>`).join('')}</tbody></table>`;
   $("compareWarnings").textContent = comparison.data.map(d => (d.warnings || []).length ? `${d.name}: ${(d.warnings || []).join(' ')}` : '').filter(Boolean).join(' ');
   $("compareMeetings").textContent = "Head-to-head against each dancer after filters. Outcomes are from your perspective. Open a dancer to see shared events.";
   $("compareEvents").innerHTML = columns.slice(1).map(({data,events})=>{
     const shared = sharedComparisonEvents(columns[0].events,events);
     const count = outcome => shared.filter(row=>row.outcome===outcome).length;
     const description = `${shared.length} shared events: ${count("Win")} wins, ${count("Loss")} losses, ${count("Tie")} ties, ${count("Together")} together, ${count("Unplaced")} without comparable placements`;
-    const table = shared.length ? `<div class="scroll"><table><thead><tr><th>Date / competition</th><th>Event</th><th>Your place</th><th>Their place</th><th>Outcome</th></tr></thead><tbody>${shared.map(({event:e,other,outcome})=>`<tr><td>${esc(e.date || "Date unknown")} / ${esc(e.comp)}</td><td><a href="${esc(e.url)}" target="_blank" rel="noopener">${esc(e.event)}</a></td><td>${e.place ?? "–"}</td><td>${other.place ?? "–"}</td><td>${outcome}</td></tr>`).join('')}</tbody></table></div>` : `<p class="note">No shared event IDs were found in these filtered histories. You can still compare their overall statistics above.</p>`;
-    return `<details><summary>${esc(data.name)} — ${esc(description)}</summary>${table}</details>`;
+    const table = shared.length ? `<div class="scroll"><table><thead><tr><th>Date / competition</th><th>Event</th><th>Your place</th><th>Their place</th><th>Outcome</th></tr></thead><tbody>${shared.map(({event:e,other,outcome})=>`<tr><td>${esc(e.date || "Date unknown")} / ${esc(e.comp)}</td><td><a href="${esc(e.url)}" target="_blank" rel="noopener">${esc(e.event)}</a></td><td>${e.place ?? "–"}</td><td>${other.place ?? "–"}</td><td class="${outcome==='Win'?'positive':''}">${outcome}</td></tr>`).join('')}</tbody></table></div>` : `<p class="note">No shared event IDs were found in these filtered histories. You can still compare their overall statistics above.</p>`;
+    return `<details><summary>${esc(data.name)} — ${esc(description).replace(/(\d+) wins?/, (text,n)=>Number(n)>0?`<span class="positive">${text}</span>`:text)}</summary>${table}</details>`;
   }).join('');
 }
 
@@ -1760,7 +1762,7 @@ function renderStats(evs) {
     [`${s.finals}`, `finals made (${finalsPct}%)`], [r1(s.avgPlace), "average place"],
     [pct(s.avgPct), state.fieldMode === "finals" ? "of the finals field beaten, on average" : "of the total field beaten, on average"],
   ];
-  $("stats").innerHTML = items.map(([v, l]) => `<div class="stat"><b>${esc(v)}</b><span>${esc(l)}</span></div>`).join("");
+  $("stats").innerHTML = items.map(([v, l],i) => `<div class="stat"><b class="${[1,2,3,5].includes(i)?positiveClass(v):''}">${esc(v)}</b><span>${esc(l)}</span></div>`).join("");
 }
 
 function buildFilters() {
@@ -1794,6 +1796,7 @@ function buildFilters() {
 }
 
 function renderChart(evs) {
+  $("chartTip").classList.toggle("positive", false);
   const byComp = new Map();
   for (const e of evs) {
     if (!byComp.has(e.cid)) byComp.set(e.cid, {cid: e.cid, comp: e.comp, date: e.date, evs: []});
@@ -1827,6 +1830,7 @@ function renderChart(evs) {
     let num = 0, den = 0;
     ys.forEach((v, i) => { num += (i - xm) * (v - ym); den += (i - xm) ** 2; });
     const slope = num / den;
+    $("chartTip").classList.toggle("positive", slope > 1);
     const word = slope > 1 ? "improving" : slope < -1 ? "slipping" : "holding steady";
     $("chartTip").textContent = `Trend: ${word} (${slope >= 0 ? "+" : ""}${slope.toFixed(1)} points per comp). Hover a point for details.`;
   } else {
@@ -1835,7 +1839,8 @@ function renderChart(evs) {
 }
 
 function renderBreakdown(evs) {
-  const keys = [["category", "Category"], ["style", "Style"], ["dance", "Dance"], ["level", "Level"], ["division", "Division"], ["partner", "Partner"], ["age", "Age group"]];
+  const keys = [["category", "Category"], ["style", "Style"], ["dance", "Dance"], ["level", "Level"], ["division", "Division"], ["partner", "Partner"]];
+  if(!keys.some(([key])=>key===state.bdKey)) state.bdKey="category";
   $("bdDanceNote").classList.toggle("hidden", state.bdKey !== "dance");
   $("bdTabs").innerHTML = keys.map(([k, l]) => `<button type="button" data-k="${k}" aria-pressed="${state.bdKey === k}">${l}</button>`).join("");
   $("bdTabs").querySelectorAll("button").forEach((b) => b.addEventListener("click", () => { state.bdKey = b.dataset.k; renderBreakdown(filtered()); }));
@@ -1862,7 +1867,7 @@ function renderBreakdown(evs) {
   const shownB = applyLimit(rows, "breakdown");
   renderFoot("breakdown", shownB.length, rows.length, "rows");
   $("bdTable").innerHTML = `<table><thead>${sortHeader(cols, state.bdSort, "b")}</thead><tbody>` +
-    shownB.map((r) => `<tr><td>${esc(r.k)}</td><td class="num">${r.events}</td><td class="num">${r.wins}</td><td class="num">${pct(r.finalsPct)}</td><td class="num">${r1(r.avgPlace)}</td><td><div class="bar-cell"><i style="width:${Math.round((r.avgPct || 0) * 0.8)}px"></i>${pct(r.avgPct)}</div></td></tr>`).join("") +
+    shownB.map((r) => `<tr><td>${esc(r.k)}</td><td class="num">${r.events}</td><td class="num ${positiveClass(r.wins)}">${r.wins}</td><td class="num ${positiveClass(r.finalsPct)}">${pct(r.finalsPct)}</td><td class="num">${r1(r.avgPlace)}</td><td class="${positiveClass(r.avgPct)}"><div class="bar-cell"><i style="width:${Math.round((r.avgPct || 0) * 0.8)}px"></i>${pct(r.avgPct)}</div></td></tr>`).join("") +
     `</tbody></table>`;
 }
 
@@ -1914,7 +1919,7 @@ function renderH2H(evs) {
   renderFoot("h2h", shown.length, rows.length, "opponents");
   let body = shown.map((h) => {
     const open = state.openOpp === h.key;
-    let tr = `<tr class="click" data-k="${esc(h.key)}" aria-expanded="${open}"><td>${esc(h.name)}</td><td class="num">${h.meetings}</td><td class="num${h.wins ? " w" : ""}">${h.wins}</td><td class="num${h.losses ? " l" : ""}">${h.losses}</td><td class="num">${h.ties}</td><td class="num">${pct(h.winPct)}</td><td class="num">${h.finals}</td></tr>`;
+    let tr = `<tr class="click" data-k="${esc(h.key)}" aria-expanded="${open}"><td>${esc(h.name)}</td><td class="num">${h.meetings}</td><td class="num${h.wins ? " w" : ""}">${h.wins}</td><td class="num${h.losses ? " l" : ""}">${h.losses}</td><td class="num">${h.ties}</td><td class="num ${positiveClass(h.winPct)}">${pct(h.winPct)}</td><td class="num ${positiveClass(h.finals)}">${h.finals}</td></tr>`;
     if (open) {
       tr += `<tr class="detail"><td colspan="7"><ul>${h.list.map(({e, theirs, theirEntry}) => {
         const res = e.place < theirs ? `<span class="w">won</span>` : e.place > theirs ? `<span class="l">lost</span>` : "tied";
@@ -2218,7 +2223,7 @@ function renderEvents(evs) {
   const shownE = applyLimit(rows, "events");
   renderFoot("events", shownE.length, rows.length, "events");
   $("evTable").innerHTML = `<table><thead>${sortHeader(cols, state.evSort, "e")}</thead><tbody>` +
-    shownE.map((e) => `<tr data-order="${e.order}"><td>${esc(e.date ? fmtDate(e.date) : "–")}</td><td>${esc(e.comp)}</td><td class="wrap-ok"><a href="${esc(e.url)}" target="_blank" rel="noopener">${esc(e.event)}</a></td><td>${esc(e.partner || "(solo)")}</td><td class="num">${e.place ?? "–"}${e.made_final ? "" : " <span class=\"hint\">(out)</span>"}</td><td class="num">${e.entries}</td><td class="num">${pct(e.percentile)}</td></tr>`).join("") +
+    shownE.map((e) => `<tr data-order="${e.order}"><td>${esc(e.date ? fmtDate(e.date) : "–")}</td><td>${esc(e.comp)}</td><td class="wrap-ok"><a href="${esc(e.url)}" target="_blank" rel="noopener">${esc(e.event)}</a></td><td>${esc(e.partner || "(solo)")}</td><td class="num ${e.made_final && e.place<=3?'positive':''}">${e.place ?? "–"}${e.made_final ? "" : " <span class=\"hint\">(out)</span>"}</td><td class="num">${e.entries}</td><td class="num ${positiveClass(e.percentile)}">${pct(e.percentile)}</td></tr>`).join("") +
     `</tbody></table>`;
 }
 $("evTable").addEventListener("click", (ev) => {

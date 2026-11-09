@@ -4,6 +4,15 @@ from bce_analyze import CAT_COUPLE, CAT_FOLLOW, CAT_LEAD, CAT_SOLO, event_catego
 
 
 class EventCategoryTests(unittest.TestCase):
+    def test_social_and_country_are_distinct_styles(self):
+        from bce_analyze import classify, STYLE_PATTERNS
+        cases = {'Country Waltz':'Country','Country West Coast Swing':'Country',
+                 'Triple Two-step':'Country','Two Step':'Country','Polka':'Country',
+                 'Nightclub Two-Step':'Social','Nightclub/Two-Step':'Social',
+                 'Social Bachata':'Social','West Coast Swing':'Social','Salsa':'Social'}
+        for title, style in cases.items():
+            with self.subTest(title=title):self.assertEqual(classify(title,STYLE_PATTERNS),style)
+
     def test_mixed_role_titles(self):
         for role, expected in (
             ("Follow", CAT_FOLLOW), ("Follows", CAT_FOLLOW),

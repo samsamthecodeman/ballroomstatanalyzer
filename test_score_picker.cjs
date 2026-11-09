@@ -9,6 +9,7 @@ const events=[{cid:1,event:'Waltz',partner:'Partner A',place:1,entries:3,made_fi
 const context=vm.createContext({$:element,norm:s=>s.toLowerCase().trim(),esc:String,state:{data:{source:'all',name:'Sam Example',events}},
   VISITOR_ID:'test',clearTimeout(){},setTimeout(){},encodeURIComponent,document:{createElement:()=>({})},
   exploreApi:async()=>({competitions:catalog}),fetch:async()=>({ok:true,json:async()=>({id:'job'})})});
+vm.runInContext(source.slice(source.indexOf('function positiveClass('),source.indexOf('function summary(')),context);
 vm.runInContext('let catalogData=[],scoreSequence=0,scoreHistory=null,scoreHistorySequence=0,scoreHistoryJob=null,scorePollTimer,scoreDancerTimer,scoreSelected=null,scoreMatches=new Map(),exploreSource="all";',context);
 let start=source.indexOf('function selectedLeaderboardStyles()');
 vm.runInContext(source.slice(start,source.indexOf('async function loadTexas()',start)),context);

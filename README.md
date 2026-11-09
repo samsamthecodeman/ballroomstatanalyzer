@@ -9,7 +9,7 @@ Ballroom Stats Analyzer uses results from [Ballroom Comp Express](https://ballro
 ## Features
 
 - **Competition history:** view placements, wins, podiums, finals, average placement, and percentage of the field beaten.
-- **Performance trends:** track results over time and compare statistics by category, style, dance, level, division, partner, and age group.
+- **Performance trends:** track results over time and compare statistics by category, style, dance, level, division, and partner.
 - **Matchup analysis:** explore head-to-head comparisons by dancer or couple, plus opponents placed above and below you.
 - **Compare dancers:** add multiple dancers for side-by-side statistics and a list of shared events with wins, losses, ties, and entries danced together.
 - **Upcoming competitions:** paste a public BCE heat-sheet link to find familiar opponents in your entered rounds, with past meetings by dancer and exact partnership.
@@ -29,11 +29,13 @@ Ballroom Stats Analyzer uses results from [Ballroom Comp Express](https://ballro
 
 The website resolves selected names to dancer IDs to keep analyses focused and reduce traffic to Ballroom Comp Express. A shared results index speeds up repeat searches. A first-time dancer lookup or results not yet cached may still need downloads. If someone else is running an analysis, your search may wait in the queue.
 
+Positive performance metrics such as wins, podiums, finals, win rates, and field beaten use green in both themes. Age group is not a breakdown or sorting option.
+
 ## Understanding your results
 
 ### Leaderboard and competition scores
 
-The website always combines **BCE and O2CM**; there are no provider toggles. The leaderboard ranks total wins at verified **Texas** or **U.S. national** venues, rather than by dancer residence. **Couple-judged** is the default category. The Style menu supports multiple checked styles (any selected style matches); no checked styles includes all styles. The table omits provider columns while retaining the provider selection controls. It supports year, judging-category, style, level, name, and uncontested-event filters. Equal win totals share a rank. Couple-judged wins credit both partners; mixed leader/follower events credit only the judged dancer. O2CM events with unverified mixed roles and team events are excluded. Published names are grouped, not verified identities, so identical names may refer to different people.
+The website always combines **BCE and O2CM**; there are no provider toggles. The leaderboard ranks total wins at verified **Texas** or **U.S. national** venues, rather than by dancer residence. **Couple-judged** is the default category. Styles include separate **Social** and **Country** options. The Style menu supports multiple checked styles (any selected style matches); no checked styles includes all styles. The table omits provider columns while retaining the provider selection controls. It supports year, judging-category, style, level, name, and uncontested-event filters. Equal win totals share a rank. Couple-judged wins credit both partners; mixed leader/follower events credit only the judged dancer. O2CM events with unverified mixed roles and team events are excluded. Published names are grouped, not verified identities, so identical names may refer to different people.
 
 Coverage is limited to cached results with verified venue metadata. BCE venue states come from its competition search. O2CM venues can be supplied in the shared venue cache; a small source-linked event-year registry supplies verified starting points. Unknown venues are excluded and counted in the coverage notice. This is an unofficial ranking, not comprehensive coverage of every U.S. competition. Exact cross-provider result mirrors count once; differently titled duplicates may remain separate.
 

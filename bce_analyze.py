@@ -226,7 +226,8 @@ STYLE_PATTERNS = [
     ("International Latin", r"international latin|\blatin\b"),
     ("American Smooth", r"american smooth|\bsmooth\b|american (waltz|tango|foxtrot|viennese)"),
     ("American Rhythm", r"american rhythm|\brhythm\b|american (cha|rumba|swing|bolero|mambo)"),
-    ("Nightclub / Social", r"west coast|hustle|salsa|bachata|argentine|nightclub|two-step|merengue|country"),
+    ("Country", r"\bcountry\b|\bpolka\b|\btriple[ -]two[ -]?step\b|^(?!.*nightclub).*\btwo[ -]?step\b"),
+    ("Social", r"west coast|hustle|salsa|bachata|argentine|nightclub|merengue"),
     ("Cabaret / Show", r"cabaret|show ?dance|theatre|theater"),
 ]
 LEVEL_PATTERNS = [
