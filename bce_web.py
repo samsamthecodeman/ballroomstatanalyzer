@@ -256,6 +256,19 @@ class Handler(BaseHTTPRequestHandler):
         #     return self._send(200, PARTNER_LEADERBOARD.snapshot())
         if url.path in ("/", "/index.html"):
             return self._send(200, PAGE, "text/html")
+        if url.path in ("/api/catalog", "/api/competition", "/api/texas"):
+            import bce_explore
+            query = {k:v[0][:100] for k,v in parse_qs(url.query).items()}
+            try:
+                if url.path == "/api/catalog":
+                    return self._send(200, {"competitions":bce_explore.catalog(FETCHER.store)})
+                if url.path == "/api/texas":
+                    return self._send(200, bce_explore.texas_leaderboard(FETCHER.store, query))
+                cid = int(query.get('cid','0'))
+                eid = int(query['eid']) if 'eid' in query else None
+                return self._send(200, bce_explore.competition(FETCHER.store,cid,eid))
+            except ValueError as exc:
+                return self._send(400, {"error":str(exc)})
         if url.path == "/api/status":
             job = JOBS.get(parse_qs(url.query).get("id", [""])[0])
             if not job:
@@ -672,6 +685,37 @@ svg.chart .dot:hover, svg.chart .dot:focus { fill: var(--red); stroke: var(--red
 </div></header>
 
 <main class="wrap">
+  <nav class="tabs" aria-label="Website sections" style="margin:24px 0">
+    <button type="button" data-page="analysis" aria-pressed="true">Dancer analysis</button>
+    <button type="button" data-page="texas" aria-pressed="false">Texas leaderboard</button>
+    <button type="button" data-page="scores" aria-pressed="false">Competition scores</button>
+  </nav>
+  <div id="texasPanel" class="hidden">
+    <h1 style="font-size:48px">Texas competition leaderboard</h1>
+    <p>Ranked by total first-place finishes at verified Texas venues. BCE cached results only; not an official ranking.</p>
+    <p class="note">Couple-judged wins credit both partners. Mixed leader/follower events credit the judged dancer. Solo wins credit the individual; team events are excluded. Tied first places count as wins, and equal win totals share a rank. Names are grouped as published, not verified dancer identities; identical names may refer to different people.</p>
+    <form id="texasForm" class="tools">
+      <label>Year <select id="texasYear" aria-label="Leaderboard year"><option value="">All years</option></select></label>
+      <label>Category <select id="texasCategory"><option value="">All</option></select></label>
+      <label>Style <select id="texasStyle"><option value="">All</option></select></label>
+      <label>Level <select id="texasLevel"><option value="">All</option></select></label>
+      <label><input type="checkbox" id="texasUncontested"> Exclude uncontested events</label>
+      <label>Name <input id="texasName" type="search" placeholder="Find a published name"></label>
+      <button class="btn" type="submit">Update leaderboard</button>
+    </form>
+    <p id="texasStatus" class="note" role="status"></p><div id="texasTable" class="scroll"></div>
+    <details><summary>Included competitions and coverage</summary><div id="texasCoverage"></div></details>
+  </div>
+  <div id="scoresPanel" class="hidden">
+    <h1 style="font-size:48px">Competition scores</h1>
+    <p>Browse cached BCE event results without running a dancer analysis.</p>
+    <div class="tools"><label>Find competition <input id="scoreSearch" type="search" placeholder="Name, year, or city"></label>
+    <label>Competition <select id="scoreCompetition" aria-label="Competition"></select></label>
+    <label>Event <select id="scoreEvent" aria-label="Competition event"></select></label></div>
+    <p id="scoreStatus" class="note" role="status"></p><div id="scoreTable" class="scroll"></div>
+    <p class="note">Placements shown are overall event results. Preliminary-round placements may be tied callback ranks. Use the official score-sheet link for individual judges’ marks and corrections.</p>
+  </div>
+  <div id="analysisPanel">
   <div id="emptyView" class="empty grid">
     <h1>Every heat, every final, every rival.</h1>
     <div class="intro">
@@ -854,6 +898,7 @@ svg.chart .dot:hover, svg.chart .dot:focus { fill: var(--red); stroke: var(--red
         <div class="limit-foot" id="foot-events"></div>
       </div>
     </section>
+  </div>
   </div>
 </main>
 
@@ -1086,6 +1131,7 @@ updateSource();
 
 $("searchForm").addEventListener("submit", async (e) => {
   e.preventDefault();
+  selectPage("analysis");
   let name = $("name").value.trim(), aid = dancerLookup.selectedName === $("name").value.trim() ? $("aid").value.trim() : "";
   const source = selectedSource();
   if (/^\d+$/.test(name)) { aid = name; name = ""; }
@@ -1304,6 +1350,76 @@ function headToHead(evs, by) {
   }
   return [...map.values()];
 }
+
+// ---------------- Competition browsing ----------------
+let catalogData = [], scoreSequence = 0, texasSequence = 0;
+async function exploreApi(url) {
+  const response = await fetch(url);
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.error || "Results could not be loaded.");
+  return data;
+}
+function selectPage(page) {
+  for (const key of ["analysis", "texas", "scores"]) $(key+"Panel").classList.toggle("hidden",key!==page);
+  $("searchForm").classList.toggle("hidden",page!=="analysis");
+  $("dancerLookupStatus").classList.toggle("hidden",page!=="analysis");
+  document.querySelectorAll("[data-page]").forEach(button=>button.setAttribute("aria-pressed",String(button.dataset.page===page)));
+  if (page === "texas") loadTexas();
+  if (page === "scores" && !catalogData.length) loadCatalog();
+}
+document.querySelectorAll("[data-page]").forEach(button=>button.addEventListener("click",()=>selectPage(button.dataset.page)));
+for (const [id,values] of [["texasCategory",["Couple-judged","Mixed proficiency – leader judged","Mixed proficiency – follower judged","Solo"]],
+  ["texasStyle",["International Standard","International Latin","American Smooth","American Rhythm","Nightclub / Social","Cabaret / Show","Other"]],
+  ["texasLevel",["Newcomer / Beginner","Pre-Bronze","Bronze","Silver","Gold","Novice","Pre-Champ","Championship","Open","Syllabus / Mixed","Other"]]]) {
+  for (const value of values) { const option = document.createElement("option"); option.value=value; option.textContent=value; $(id).append(option); }
+}
+async function loadTexas() {
+  const sequence = ++texasSequence;
+  $("texasStatus").textContent = "Reading verified Texas results…";
+  const query = new URLSearchParams({year:$("texasYear").value,category:$("texasCategory").value,style:$("texasStyle").value,level:$("texasLevel").value,q:$("texasName").value,excludeUncontested:String($("texasUncontested").checked)});
+  try {
+    const data = await exploreApi("/api/texas?"+query);
+    if (sequence !== texasSequence) return;
+    if ($("texasYear").options.length === 1) for (const year of data.years) {const option=document.createElement("option");option.value=year;option.textContent=year;$("texasYear").append(option);}
+    $("texasStatus").textContent = `${data.competitions.length} included Texas competitions · ${data.total_names} published names. Showing ${data.rows.length} of ${data.matching_names} matching names (maximum 500). ${data.unknown_venues} cached competitions still lack verified venue metadata and are excluded. Coverage updates as venue verification finishes.`;
+    $("texasTable").innerHTML = `<table><thead><tr><th>Rank</th><th>Published name</th><th>Wins</th><th>Events</th><th>Competitions</th></tr></thead><tbody>${data.rows.map(r=>`<tr><td>${r.rank}</td><td>${esc(r.name)}</td><td>${r.wins}</td><td>${r.events}</td><td>${r.competitions}</td></tr>`).join('')}</tbody></table>`;
+    $("texasCoverage").innerHTML = data.competitions.map(c=>`<p>${esc(c.date)} — ${esc(c.name)} · ${esc(c.city)}, ${esc(c.state)}</p>`).join('') || '<p>No verified Texas results match these filters yet.</p>';
+  } catch(error) {if(sequence===texasSequence) $("texasStatus").textContent=error.message;}
+}
+$("texasForm").addEventListener("submit",event=>{event.preventDefault();loadTexas();});
+async function loadCatalog() {
+  try {const data=await exploreApi('/api/catalog');catalogData=data.competitions;fillCompetitions();}
+  catch(error){$("scoreStatus").textContent=error.message;}
+}
+function fillCompetitions() {
+  ++scoreSequence;
+  const search=norm($("scoreSearch").value);
+  const matches=catalogData.filter(c=>norm([c.name,c.date,c.city,c.state].join(' ')).includes(search));
+  $("scoreCompetition").innerHTML = '<option value="">Choose a competition</option>'+matches.map(c=>`<option value="${c.cid}">${esc(c.date)} · ${esc(c.name)}${c.state?' · '+esc(c.state):''}</option>`).join('');
+  $("scoreEvent").innerHTML='';$("scoreTable").textContent='';$("scoreStatus").textContent=`${matches.length} cached competitions available.`;
+}
+$("scoreSearch").addEventListener("input",fillCompetitions);
+$("scoreCompetition").addEventListener("change",async()=>{
+  const sequence=++scoreSequence,cid=$("scoreCompetition").value;
+  $("scoreEvent").innerHTML='';$("scoreTable").textContent='';
+  if(!cid)return;
+  try {
+    const data=await exploreApi('/api/competition?cid='+encodeURIComponent(cid));
+    if(sequence!==scoreSequence)return;
+    $("scoreEvent").innerHTML='<option value="">Choose an event</option>'+data.events.map(e=>`<option value="${e.eid}">${esc(e.title)}</option>`).join('');
+    $("scoreStatus").textContent=`${data.name} · ${data.events.length} published events in cache. Last competition refresh: ${data.updated?new Date(data.updated*1000).toLocaleString():'Pending'}.`;
+  }catch(error){if(sequence===scoreSequence)$("scoreStatus").textContent=error.message;}
+});
+$("scoreEvent").addEventListener("change",async()=>{
+  const sequence=++scoreSequence,cid=$("scoreCompetition").value,eid=$("scoreEvent").value;
+  $("scoreTable").textContent='';if(!eid)return;
+  try{
+    const data=await exploreApi(`/api/competition?cid=${encodeURIComponent(cid)}&eid=${encodeURIComponent(eid)}`);
+    if(sequence!==scoreSequence)return;
+    $("scoreStatus").textContent=`${data.title} · ${data.category} · ${data.entries} entries · ${data.rounds ?? 'Unknown'} rounds.`;
+    $("scoreTable").innerHTML=`<p><a href="${esc(data.url)}" target="_blank" rel="noopener">Official score sheet / judges’ marks</a></p><table><thead><tr><th>Place</th><th>Entry</th><th>Final</th><th>Rounds danced</th></tr></thead><tbody>${data.rows.map(r=>`<tr><td>${r.place??'–'}</td><td>${esc(r.entry)}</td><td>${r.made_final?'Yes':'No'}</td><td>${r.rounds??'–'}</td></tr>`).join('')}</tbody></table>`;
+  }catch(error){if(sequence===scoreSequence)$("scoreStatus").textContent=error.message;}
+});
 
 // ---------------- Upcoming competition ----------------
 let upcomingSequence = 0;

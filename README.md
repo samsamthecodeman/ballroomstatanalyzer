@@ -13,6 +13,8 @@ Ballroom Stats Analyzer uses results from [Ballroom Comp Express](https://ballro
 - **Matchup analysis:** explore head-to-head comparisons by dancer or couple, plus opponents placed above and below you.
 - **Compare dancers:** add multiple dancers for side-by-side statistics and a list of shared events with wins, losses, ties, and entries danced together.
 - **Upcoming competitions:** paste a public BCE heat-sheet link to find familiar opponents in your entered rounds, with past meetings by dancer and exact partnership.
+- **Texas leaderboard:** rank published names by total wins at verified Texas venues, with year, category, style, level, name, and uncontested-event filters.
+- **Competition scores:** browse cached BCE competitions and event placements, finals status, and rounds danced, with links to official judges' marks.
 - **Judging categories:** distinguish couple-judged, leader-judged, follower-judged, and solo events.
 - **Filters:** narrow results by category, style, level, division, and partner, and optionally exclude uncontested events.
 - **YCN points estimates:** review role-specific calculations, event-by-event explanations, and interpretations of ambiguous level names.
@@ -28,6 +30,12 @@ Ballroom Stats Analyzer uses results from [Ballroom Comp Express](https://ballro
 The website resolves selected names to dancer IDs to keep analyses focused and reduce traffic to Ballroom Comp Express. A shared results index speeds up repeat searches. A first-time dancer lookup or results not yet cached may still need downloads. If someone else is running an analysis, your search may wait in the queue.
 
 ## Understanding your results
+
+### Texas leaderboard and competition scores
+
+Use the separate **Texas leaderboard** and **Competition scores** navigation tabs without running a dancer analysis. The leaderboard counts first-place final results once per event, credits both partners in couple-judged events and only the judged dancer in mixed leader/follower events, and excludes team events. Equal win totals share a rank. The leaderboard groups published names, not verified identities, so same-name people may be combined. It covers cached BCE competitions with venue state verified as Texas through BCE's public competition search; unknown venues are excluded and counted in the coverage notice. Venue verification runs in the background and is cached independently of historical results. This is a venue-based, unofficial leaderboard, not a list of Texas residents or complete coverage of every results provider.
+
+The score viewer lets you search for a cached competition, choose an event, and inspect overall placements, finalists, and rounds danced. Open the official score-sheet link for individual judges' marks and subsequent corrections. Browsing these sections reads the shared cache and does not fetch every dancer's history.
 
 ### Comparing dancers
 

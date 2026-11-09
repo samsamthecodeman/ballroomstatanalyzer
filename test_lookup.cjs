@@ -69,6 +69,7 @@ vm.runInContext(source.slice(start, source.indexOf('$("searchForm").addEventList
   assert.equal(element('cids').disabled, false);
   context.state = {requireId: true};
   context.norm = value => value.toLowerCase().trim();
+  context.selectPage = () => {};
   context.show = context.setStatus = context.poll = () => {};
   context.fail = message => { throw new Error(message); };
   const submitStart = source.indexOf('$("searchForm").addEventListener', start);

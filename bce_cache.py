@@ -192,6 +192,18 @@ class CacheMaintainer:
                 failures += 1
         # Recent competition listings are authoritative even when dancer overviews lag.
         failures += self.refresh_profiles(cycle["started"], now.date())
+        # Venue verification is cached independently and yields to foreground searches.
+        import bce_explore
+        class VenueFetcher:
+            store = maintainer.store
+            def get(self, url, **kwargs):
+                return maintainer._get(url, **kwargs)
+        if self.store.get_meta("venue_retry_after", 0) <= time.time():
+            try:
+                bce_explore.refresh_locations(VenueFetcher(), self._yield)
+            except ValueError as exc:
+                self.store.set_meta("venue_retry_after", time.time() + 3600)
+                self.log(f"Venue verification postponed: {exc}")
         if failures:
             self.store.set_meta("refresh_status", {"state": "partial", "failed_competitions": failures, "updated_at": time.time()})
             return False
