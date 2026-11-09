@@ -13,8 +13,8 @@ Ballroom Stats Analyzer uses results from [Ballroom Comp Express](https://ballro
 - **Matchup analysis:** explore head-to-head comparisons by dancer or couple, plus opponents placed above and below you.
 - **Compare dancers:** add multiple dancers for side-by-side statistics and a list of shared events with wins, losses, ties, and entries danced together.
 - **Upcoming competitions:** paste a public BCE heat-sheet link to find familiar opponents in your entered rounds, with past meetings by dancer and exact partnership.
-- **Texas leaderboard:** rank published names by total wins at verified Texas venues, with year, category, style, level, name, and uncontested-event filters.
-- **Competition scores:** browse cached BCE competitions and event placements, finals status, and rounds danced, with links to official judges' marks.
+- **Leaderboard:** rank published names by total wins at verified Texas or U.S. national venues, with year, category, style, level, name, and uncontested-event filters.
+- **Competition scores:** browse cached BCE and O2CM competitions, dancer results, and event placements, finals status, and rounds danced, with links to official judges' marks.
 - **Judging categories:** distinguish couple-judged, leader-judged, follower-judged, and solo events.
 - **Filters:** narrow results by category, style, level, division, and partner, and optionally exclude uncontested events.
 - **YCN points estimates:** review role-specific calculations, event-by-event explanations, and interpretations of ambiguous level names.
@@ -31,11 +31,13 @@ The website resolves selected names to dancer IDs to keep analyses focused and r
 
 ## Understanding your results
 
-### Texas leaderboard and competition scores
+### Leaderboard and competition scores
 
-Use the separate **Texas leaderboard** and **Competition scores** navigation tabs without running a dancer analysis. The leaderboard counts first-place final results once per event, credits both partners in couple-judged events and only the judged dancer in mixed leader/follower events, and excludes team events. Equal win totals share a rank. The leaderboard groups published names, not verified identities, so same-name people may be combined. It covers cached BCE competitions with venue state verified as Texas through BCE's public competition search; unknown venues are excluded and counted in the coverage notice. Venue verification runs in the background and is cached independently of historical results. This is a venue-based, unofficial leaderboard, not a list of Texas residents or complete coverage of every results provider.
+Both sections default to **Unified data** (BCE and O2CM), with provider-specific options. The leaderboard ranks total wins at verified **Texas** or **U.S. national** venues, rather than by dancer residence. It supports year, judging-category, style, level, name, and uncontested-event filters. Equal win totals share a rank. Couple-judged wins credit both partners; mixed leader/follower events credit only the judged dancer. O2CM events with unverified mixed roles and team events are excluded. Published names are grouped, not verified identities, so identical names may refer to different people.
 
-The score viewer lets you search for a cached competition, choose an event, and inspect overall placements, finalists, and rounds danced. Open the official score-sheet link for individual judges' marks and subsequent corrections. Browsing these sections reads the shared cache and does not fetch every dancer's history.
+Coverage is limited to cached results with verified venue metadata. BCE venue states come from its competition search. O2CM venues can be supplied in the shared venue cache; a small source-linked event-year registry supplies verified starting points. Unknown venues are excluded and counted in the coverage notice. This is an unofficial ranking, not comprehensive coverage of every U.S. competition. Exact cross-provider result mirrors count once; differently titled duplicates may remain separate.
+
+In **Competition scores**, choose a competition and enter a full dancer name from its suggestions to see all matching events, partners, placements, finals status, rounds, and source links. Multiple same-name entries are shown with an ambiguity warning. Alternatively, choose one event to inspect the whole field. A unique cross-provider competition pair with the same published name and date is grouped under Unified data. Official links show judges' marks and subsequent corrections. These sections use the cache and do not crawl other dancers' histories while browsing.
 
 ### Comparing dancers
 
