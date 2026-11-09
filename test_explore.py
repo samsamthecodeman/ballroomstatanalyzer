@@ -46,5 +46,12 @@ class ExploreTests(unittest.TestCase):
         for cid,eid in [(999,None),(1,99)]:
             with self.assertRaises(ValueError): explore.competition(self.store,cid,eid)
 
+    def test_legacy_cache_title_falls_back_to_event_listing(self):
+        data=self.store.get_events([(1,1)])[(1,1)]
+        data[2]=None
+        self.store.put_event(1,1,data)
+        self.assertEqual(explore.competition(self.store,1,1)['title'],'Bronze Waltz')
+        self.assertTrue(explore.texas_leaderboard(self.store,{})['rows'])
+
 
 if __name__=='__main__':unittest.main()

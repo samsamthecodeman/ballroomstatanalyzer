@@ -52,6 +52,7 @@ def competition(store, cid, eid=None):
     if not data:
         raise ValueError('This event is awaiting a cache refresh. Check the official results.')
     results,n,title,info = data
+    title = title or next(e['title'] for e in comp['events'] if e['eid']==eid)
     return {'title':title,'entries':n,'rounds':info.get('n_rounds'), 'url':core.RESULTS_URL+f'?cid={cid}&eid={eid}',
             'category':core.event_category(title,info.get('judged'),info.get('solo_share',0)),
             'rows':sorted([{'entry':entry,**result} for entry,result in results.items()],
@@ -69,11 +70,13 @@ def texas_leaderboard(store, filters):
             rows = []
             with store.connect() as db:
                 for cid in tx:
-                    current_ids = {e['eid'] for e in store.competition(cid)['data']['events']}
+                    current_titles = {e['eid']:e['title'] for e in store.competition(cid)['data']['events']}
                     for eid,payload in db.execute('SELECT eid,payload FROM events WHERE cid=? AND version=?',(cid,PARSER_VERSION)):
                         # Exclude stale orphan event rows left after an event-list correction.
-                        if eid in current_ids:
-                            rows.append((cid,eid,json.loads(payload)))
+                        if eid in current_titles:
+                            data = json.loads(payload)
+                            data[2] = data[2] or current_titles[eid]
+                            rows.append((cid,eid,data))
             cached = (time.time(),comps,tx,rows)
             _snapshot[key] = cached
     _,comps,tx,events = cached
