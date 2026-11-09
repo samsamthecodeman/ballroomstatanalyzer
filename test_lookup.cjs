@@ -18,13 +18,14 @@ const matches = [
 ];
 const context = vm.createContext({
   $: element, VISITOR_ID: 'test', document: {createElement: () => ({})},
-  selectedSource: () => element('source').value || 'bce',
+  selectedSource: () => 'all',
   setTimeout() {}, clearTimeout() {}, encodeURIComponent,
   fetch: async () => ({ok: true, json: async () => ({dancers: matches})}),
 });
 const start = source.indexOf('const dancerLookup =');
 assert.match(source, /id="source" value="all"/);
-assert.match(source, /id="sourceAll" aria-pressed="true">Unified data/);
+assert.doesNotMatch(source, /id="source(?:All|Bce|O2cm)"|data-explore-source=/);
+assert.match(source, /const selectedSource = \(\) => "all"/);
 element('source').value = 'all';
 vm.runInContext(source.slice(start, source.indexOf('$("searchForm").addEventListener', start)), context);
 (async () => {
@@ -52,21 +53,10 @@ vm.runInContext(source.slice(start, source.indexOf('$("searchForm").addEventList
   context.fetch = async () => ({ok: false, json: async () => ({error: 'Try a dancer ID'})});
   await context.lookupDancers('Sam');
   assert.equal(element('dancerLookupStatus').textContent, 'Try a dancer ID');
-  element('source').value = 'o2cm';
-  element('source').listeners.change();
-  assert.equal(element('fuzzy').disabled, true);
   element('name').value = 'Jonny Lu';
   element('name').listeners.input();
   assert.equal(element('name').value, 'Jonny Lu');
-  element('sourceAll').listeners.click();
-  assert.equal(element('source').value, 'all');
   assert.equal(element('cids').disabled, true);
-  assert.equal(element('sourceAll')['aria-pressed'], 'true');
-  assert.equal(element('name').value, 'Jonny Lu');
-  element('source').value = 'bce';
-  element('source').listeners.change();
-  assert.equal(element('aid').value, '');
-  assert.equal(element('cids').disabled, false);
   context.state = {requireId: true};
   context.norm = value => value.toLowerCase().trim();
   context.selectPage = () => {};
@@ -84,7 +74,7 @@ vm.runInContext(source.slice(start, source.indexOf('$("searchForm").addEventList
     element('source').value = sourceName;
     element('name').value = '10062';
     await element('searchForm').listeners.submit({preventDefault() {}});
-    assert.equal(payload.source, sourceName);
+    assert.equal(payload.source, 'all');
     assert.equal(payload.aid, '10062');
     assert.equal(payload.name, '');
   }
@@ -98,5 +88,5 @@ vm.runInContext(source.slice(start, source.indexOf('$("searchForm").addEventList
   assert.equal(payload.name, 'Jonny Lu');
   assert.equal(payload.aid, '');
   console.log('Passed: name selection, duplicate-name IDs, editing, stale response handling, and lookup errors.');
-  console.log('Passed: unified name/ID submission for all three sources and duplicate-name partnership handoff.');
+  console.log('Passed: always-unified name/ID submission despite hidden-field tampering and duplicate-name partnership handoff.');
 })().catch(error => { console.error(error); process.exitCode = 1; });

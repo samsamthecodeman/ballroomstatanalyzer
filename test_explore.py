@@ -6,6 +6,29 @@ from bce_store import ResultsStore
 
 
 class ExploreTests(unittest.TestCase):
+    def test_public_api_always_combines_providers(self):
+        import json,threading
+        from unittest.mock import patch
+        from http.server import ThreadingHTTPServer
+        from urllib.request import urlopen,Request
+        import bce_web
+        server=ThreadingHTTPServer(('127.0.0.1',0),bce_web.Handler)
+        threading.Thread(target=server.serve_forever,daemon=True).start()
+        url=f'http://127.0.0.1:{server.server_port}'
+        try:
+            with patch.object(bce_web,'FETCHER') as fetcher, patch.object(explore,'catalog',return_value=[]) as catalog:
+                json.load(urlopen(url+'/api/catalog?source=bce'))
+                self.assertEqual(catalog.call_args.args[1],'all')
+            captured=[];ready=threading.Event()
+            def run(job_id,job,params):captured.append(params);ready.set()
+            with patch.object(bce_web,'run_job',side_effect=run),patch.dict(bce_web.CONFIG,{'public':False}):
+                req=Request(url+'/api/start',data=json.dumps({'source':'bce','aid':123}).encode(),headers={'Content-Type':'application/json'})
+                result=json.load(urlopen(req))
+                self.assertTrue(ready.wait(3))
+                self.assertEqual(captured[0]['source'],'all')
+                bce_web.JOBS.pop(result['id'],None)
+        finally:server.shutdown();server.server_close()
+
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)

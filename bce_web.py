@@ -261,6 +261,7 @@ class Handler(BaseHTTPRequestHandler):
         if url.path in ("/api/catalog", "/api/competition", "/api/texas"):
             import bce_explore
             query = {k:v[0][:(1000 if k == 'styles' else 100)] for k,v in parse_qs(url.query).items()}
+            query["source"]="all"
             try:
                 if url.path == "/api/catalog":
                     return self._send(200, {"competitions":bce_explore.catalog(FETCHER.store, query.get('source','all'))})
@@ -348,28 +349,17 @@ class Handler(BaseHTTPRequestHandler):
             cleanup_jobs()
             name = str(params.get("name") or "").strip()[:100]
             aid = str(params.get("aid") or "").strip()[:12]
-            source = params.get("source", "bce")
-            if source not in ("bce", "o2cm", "all"):
-                return self._send(400, {"error": "Choose Ballroom Comp Express, O2CM, or Unified data."})
+            source = "all"
+            params["source"] = source
+            params.pop("first", None); params.pop("last", None); params.pop("o2_comps", None)
             params["partner"] = str(params.get("partner") or "").strip()[:100]
             params["cids"] = str(params.get("cids") or "").strip()[:200]
-            if source == "o2cm":
-                first = str(params.get("first") or "").strip()[:80]
-                last = str(params.get("last") or "").strip()[:80]
-                if first and last:
-                    name = f"{first} {last}"
-                codes = [part.strip().lower() for part in params["cids"].split(",") if part.strip()]
-                if any(not re.fullmatch(r"[a-z0-9_-]{2,30}", code) for code in codes):
-                    return self._send(400, {"error": "O2CM competition codes are comma-separated, for example mit26, big23."})
-                params.update(first=first, last=last, o2_comps=codes or None)
-            if source == "all" and params["cids"]:
-                return self._send(400, {"error": "Select one source to filter by competition IDs or codes."})
+            if params["cids"]:
+                return self._send(400, {"error": "Use Competition scores to filter by competition."})
             if name.isdigit() and not aid:
                 name, aid = "", name
             if aid and not aid.isdigit():
                 return self._send(400, {"error": "A dancer ID is a number, like 10062."})
-            if source == "bce" and CONFIG["require_id"] and not aid:
-                return self._send(400, {"error": "This site searches by dancer ID. Add the dancer’s ID; the box explains how to find it."})
             if not core.norm(name) and not aid:
                 return self._send(400, {"error": "Type a dancer’s name or dancer ID first."})
             params["name"], params["aid"] = name, int(aid) if aid else None
@@ -487,9 +477,6 @@ form.search { grid-column: 4 / span 9; display: flex; gap: 12px; align-items: ce
 @media (max-width: 900px) { .brand, form.search, .search-hint { grid-column: 1 / -1; } form.search { justify-content: flex-start; margin-top: 12px; } .search-hint { text-align: left; } }
 form.search input[type=text] { width: 240px; max-width: 100%; height: 40px; padding: 0 12px; border: 1px solid var(--ink); border-radius: 0; background: var(--bg); }
 form.search input[type=text].aid { width: 130px; }
-.source-toggle { display: flex; gap: 3px; flex-wrap: wrap; }
-.source-toggle button { background: var(--bg); color: var(--ink); border: 1px solid var(--hair); padding: 9px 12px; font: inherit; font-size: 13px; cursor: pointer; }
-.source-toggle button[aria-pressed=true] { background: var(--ink); color: var(--bg); border-color: var(--ink); }
 form.search input::placeholder, .tools input::placeholder { color: var(--grey); }
 
 .btn { height: 40px; padding: 0 20px; border: 1px solid var(--ink); border-radius: 0; background: var(--ink); color: var(--bg); font-weight: 600; cursor: pointer; }
@@ -664,11 +651,6 @@ svg.chart .dot:hover, svg.chart .dot:focus { fill: var(--red); stroke: var(--red
 <header class="bar"><div class="wrap">
   <a class="brand" href="/" aria-label="Ballroom Stats Analyzer home">Ballroom Stats Analyzer</a>
   <form class="search" id="searchForm">
-    <div class="source-toggle" role="group" aria-label="Results source">
-      <button type="button" id="sourceBce" aria-pressed="false" title="Ballroom Comp Express">BCE</button>
-      <button type="button" id="sourceO2cm" aria-pressed="false">O2CM</button>
-      <button type="button" id="sourceAll" aria-pressed="true">Unified data</button>
-    </div>
     <input type="hidden" id="source" value="all">
     <input type="text" id="name" placeholder="Name or dancer ID" aria-label="Name or dancer ID" aria-describedby="dancerLookupStatus" list="dancerSuggestions" autocomplete="off">
     <datalist id="dancerSuggestions"></datalist>
@@ -678,7 +660,7 @@ svg.chart .dot:hover, svg.chart .dot:focus { fill: var(--red); stroke: var(--red
       <div class="panel">
         <label class="check"><input type="checkbox" id="fuzzy"> <span>Match similar spellings<br><span class="hint">Finds “Jon” when you type “John”.</span></span></label>
         <label>Only with partner<input type="text" id="partner" placeholder="Optional"></label>
-        <label><span id="competitionFilterLabel">Comp ids to scan</span><input type="text" id="cids" placeholder="All, or e.g. 150-250"></label>
+        <input type="hidden" id="cids" value="">
       </div>
     </details>
     <button class="btn" id="goBtn" type="submit">Analyze</button>
@@ -692,14 +674,9 @@ svg.chart .dot:hover, svg.chart .dot:focus { fill: var(--red); stroke: var(--red
     <button type="button" data-page="texas" aria-pressed="false">Leaderboard</button>
     <button type="button" data-page="scores" aria-pressed="false">Competition scores</button>
   </nav>
-  <div id="exploreSources" class="tabs hidden" aria-label="Browsing data source">
-    <button type="button" data-explore-source="all" aria-pressed="true">Unified data</button>
-    <button type="button" data-explore-source="bce" aria-pressed="false">BCE</button>
-    <button type="button" data-explore-source="o2cm" aria-pressed="false">O2CM</button>
-  </div>
   <div id="texasPanel" class="hidden">
     <h1 style="font-size:48px">Competition leaderboard</h1>
-    <p>Ranked by total first-place finishes at verified U.S. national or Texas venues. Unified data is selected by default. This is not an official ranking or a ranking of residents.</p>
+    <p>Ranked by total first-place finishes at verified U.S. national or Texas venues. Results always combine BCE and O2CM. This is not an official ranking or a ranking of residents.</p>
     <p class="note">Couple-judged wins credit both partners. Mixed leader/follower events credit the judged dancer. Solo wins credit the individual; team events are excluded. Tied first places count as wins, and equal win totals share a rank. Names are grouped as published, not verified dancer identities; identical names may refer to different people.</p>
     <form id="texasForm" class="tools">
       <label>Region <select id="leaderRegion"><option value="texas">Texas</option><option value="national">U.S. national</option></select></label>
@@ -716,7 +693,7 @@ svg.chart .dot:hover, svg.chart .dot:focus { fill: var(--red); stroke: var(--red
   </div>
   <div id="scoresPanel" class="hidden">
     <h1 style="font-size:48px">Competition scores</h1>
-    <p>Enter your name to load the competitions found in your result history, then select one to see all your results. Unified data includes both BCE and O2CM.</p>
+    <p>Enter your name to see results from every competition in your history. Results always combine BCE and O2CM. Select a specific competition to narrow the list.</p>
     <form id="scoreDancerForm" class="tools"><label>Dancer name <input id="scoreDancer" type="text" aria-label="Competition dancer name" list="scoreDancers" placeholder="Type your full name" autocomplete="off" required></label><datalist id="scoreDancers"></datalist><button type="submit" id="scoreLoad" class="btn">Load my competitions</button><button type="button" id="scoreStop" class="btn quiet hidden">Stop lookup</button></form>
     <div class="tools" style="margin-top:16px"><label>Filter your competitions <input id="scoreSearch" type="search" placeholder="Name, year, or city"></label>
     <label>Competition <select id="scoreCompetition" aria-label="Competition"></select></label>
@@ -792,13 +769,13 @@ svg.chart .dot:hover, svg.chart .dot:focus { fill: var(--red); stroke: var(--red
         </form>
         <p class="note" id="upcomingStatus" role="status" aria-live="polite">Uses your completed analysis. No BCE login required.</p>
         <div id="upcomingResults"></div>
-        <p class="note">Uses all results from your completed analysis, including both sources when Unified data was selected. Dashboard filters do not limit this history. Meetings span dances, levels, and judging categories; review the event details. Names are matched as published; ambiguous registered names are flagged. “No previous meetings” means none in this analyzed history.</p>
+        <p class="note">Uses all results from your completed combined analysis. Dashboard filters do not limit this history. Meetings span dances, levels, and judging categories; review the event details. Names are matched as published; ambiguous registered names are flagged. “No previous meetings” means none in this analyzed history.</p>
         <p class="note">Conditional callback rounds are excluded from the entered-round list. Entrants and times may change; BCE pages are cached for 15 minutes. Use the official schedule on competition day. These statistics are past results, not predictions. Exports above contain your historical analysis.</p>
       </div>
     </section>
 
     <section data-sec="compare">
-      <header class="sec-head c-head"><h2>Compare dancers</h2><p class="note">Add multiple dancers using the same results source, dashboard filters, and field-beaten mode. Overall histories may cover different events and dates.</p></header>
+      <header class="sec-head c-head"><h2>Compare dancers</h2><p class="note">Add multiple dancers using combined results, the same dashboard filters, and field-beaten mode. Overall histories may cover different events and dates.</p></header>
       <div class="sec-body c-body">
         <form id="compareForm" class="tools">
           <label>Other dancer <input id="compareName" type="text" placeholder="Name or dancer ID" aria-label="Other dancer name or ID" list="compareSuggestions" autocomplete="off" required></label>
@@ -1053,7 +1030,7 @@ fetch("/api/config").then((r) => r.json()).then((c) => {
 }).catch(() => {});
 
 // ---------------- Search & progress ----------------
-const selectedSource = () => $("source").value;
+const selectedSource = () => "all";
 const dancerLookup = {matches: new Map(), selectedName: "", timer: null, sequence: 0};
 function chooseDancer(dancer) {
   $("name").value = dancer.name;
@@ -1111,31 +1088,9 @@ $("name").addEventListener("input", () => {
   }
 });
 function updateSource() {
-  const o2cm = selectedSource() === "o2cm";
-  ++dancerLookup.sequence; clearTimeout(dancerLookup.timer);
-  dancerLookup.matches.clear();
-  $("dancerSuggestions").replaceChildren();
-  $("name").setAttribute("list", o2cm ? "" : "dancerSuggestions");
-  $("fuzzy").disabled = o2cm;
-  $("dancerLookupStatus").textContent = o2cm
-    ? "Enter a full name or Ballroom Comp Express dancer ID. For compound surnames, use Last name, First name."
-    : selectedSource() === "all"
-    ? "Type at least 3 characters and choose a dancer"
-    : "Type a name and choose a dancer, or enter a Ballroom Comp Express dancer ID.";
-  $("cids").disabled = selectedSource() === "all";
-  if ($("cids").disabled) $("cids").value = "";
-  $("cids").placeholder = o2cm ? "All, or mit26, big23" : "All, or e.g. 150-250";
-  $("competitionFilterLabel").textContent = o2cm ? "O2CM competition codes" : "Comp ids to scan";
-  $("idNote").textContent = o2cm
-    ? "Enter the full name used for O2CM registration. A Ballroom Comp Express ID can also resolve the name. Check the returned partners and competitions."
-    : "Search by name or dancer ID. Unified data includes both providers; shared partnerships help distinguish matching names.";
-  for (const [id, value] of [["sourceBce", "bce"], ["sourceO2cm", "o2cm"], ["sourceAll", "all"]]) {
-    $(id).setAttribute("aria-pressed", String(selectedSource() === value));
-  }
-}
-$("source").addEventListener("change", updateSource);
-for (const [id, value] of [["sourceBce", "bce"], ["sourceO2cm", "o2cm"], ["sourceAll", "all"]]) {
-  $(id).addEventListener("click", () => { $("source").value = value; updateSource(); });
+  $("cids").disabled=true; $("cids").value="";
+  $("dancerLookupStatus").textContent="Type at least 3 characters and choose a dancer";
+  $("idNote").textContent="Search by name or dancer ID. Results always combine BCE and O2CM; shared partnerships help distinguish matching names.";
 }
 updateSource();
 
@@ -1372,7 +1327,6 @@ async function exploreApi(url) {
 }
 function selectPage(page) {
   for (const key of ["analysis", "texas", "scores"]) $(key+"Panel").classList.toggle("hidden",key!==page);
-  $("exploreSources").classList.toggle("hidden",page==="analysis");
   $("searchForm").classList.toggle("hidden",page!=="analysis");
   $("dancerLookupStatus").classList.toggle("hidden",page!=="analysis");
   document.querySelectorAll("[data-page]").forEach(button=>button.setAttribute("aria-pressed",String(button.dataset.page===page)));
@@ -1380,16 +1334,6 @@ function selectPage(page) {
   if (page === "scores" && (!catalogData.length || !scoreHistory)) loadCatalog();
 }
 document.querySelectorAll("[data-page]").forEach(button=>button.addEventListener("click",()=>selectPage(button.dataset.page)));
-document.querySelectorAll("[data-explore-source]").forEach(button=>button.addEventListener("click",()=>{
-  exploreSource=button.dataset.exploreSource;
-  document.querySelectorAll("[data-explore-source]").forEach(b=>b.setAttribute("aria-pressed",String(b===button)));
-  resetScoreHistory();
-  catalogData=[]; ++scoreSequence;
-  $("texasYear").innerHTML='<option value="">All years</option>';
-  $("scoreDancers").innerHTML='';
-  if(!$("texasPanel").classList.contains("hidden")) loadTexas();
-  else loadCatalog();
-}));
 for (const [id,values] of [["texasCategory",["Couple-judged","Mixed proficiency – leader judged","Mixed proficiency – follower judged","Solo"]],
   ["texasStyle",["International Standard","International Latin","American Smooth","American Rhythm","Nightclub / Social","Cabaret / Show","Other"]],
   ["texasLevel",["Newcomer / Beginner","Pre-Bronze","Bronze","Silver","Gold","Novice","Pre-Champ","Championship","Open","Syllabus / Mixed","Other"]]]) {
@@ -1454,10 +1398,12 @@ function fillCompetitions() {
   ++scoreSequence;
   const search=norm($("scoreSearch").value), ids=new Set((scoreHistory?.events||[]).map(e=>String(e.cid)));
   const matches=catalogData.filter(c=>c.members.some(id=>ids.has(String(id))) && norm([c.name,c.date,c.city,c.state].join(' ')).includes(search));
-  $("scoreCompetition").innerHTML='<option value="">Choose your competition</option>'+matches.map(c=>`<option value="${c.cid}">${esc(c.date)} · ${esc(c.name)} · ${esc(c.source_label)}</option>`).join('');
+  $("scoreCompetition").innerHTML='<option value="">All my competitions</option>'+matches.map(c=>`<option value="${c.cid}">${esc(c.date)} · ${esc(c.name)} · ${esc(c.source_label)}</option>`).join('');
+  $("scoreCompetition").value="";
   $("scoreCompetition").disabled=!scoreHistory;
   $("scoreEvent").innerHTML='';$("scoreTable").textContent='';
-  $("scoreStatus").textContent=scoreHistory ? `${scoreHistory.name} · ${matches.length} competitions found in this result history. Select a competition.` : 'Enter your full name and select Load my competitions.';
+  if(scoreHistory){showDancerCompetition();populateScoreEvents();return;}
+  $("scoreStatus").textContent=scoreHistory ? `${scoreHistory.name} · ${matches.length} competitions found in this result history. Showing results from all competitions by default.` : 'Enter your full name and select Load my competitions.';
 }
 $("scoreSearch").addEventListener("input",fillCompetitions);
 $("scoreDancer").addEventListener("input",()=>{
@@ -1510,22 +1456,26 @@ $("scoreDancerForm").addEventListener('submit',async event=>{
     check();
   }catch(error){if(sequence===scoreHistorySequence){$("scoreStatus").textContent=error.message;$("scoreLoad").disabled=false;$("scoreStop").classList.add('hidden');}}
 });
+function scoreVisibleRows() {
+  if(!scoreHistory)return [];
+  const selected=$("scoreCompetition").value, search=norm($("scoreSearch").value);
+  const comps=catalogData.filter(c=>(!selected||String(c.cid)===selected) && norm([c.name,c.date,c.city,c.state].join(' ')).includes(search));
+  const ids=new Set(comps.flatMap(c=>c.members.map(String)));
+  return scoreHistory.events.filter(e=>ids.has(String(e.cid))).sort((a,b)=>(b.date||'').localeCompare(a.date||'') || (a.comp||'').localeCompare(b.comp||'') || a.event.localeCompare(b.event));
+}
 function showDancerCompetition() {
-  const selected=catalogData.find(c=>String(c.cid)===$("scoreCompetition").value);
-  if(!selected||!scoreHistory)return;
-  const ids=new Set(selected.members.map(String));
-  const rows=scoreHistory.events.filter(e=>ids.has(String(e.cid)));
-  $("scoreStatus").textContent=`${scoreHistory.name} · ${selected.name} · ${rows.length} result entries.`+(scoreHistory.warnings?.length?' '+scoreHistory.warnings.join(' '):'');
-  $("scoreTable").innerHTML=`<table><thead><tr><th>Event</th><th>Partner</th><th>Place / field</th><th>Final</th><th>Rounds</th></tr></thead><tbody>${rows.map(r=>`<tr><td class="wrap-ok"><a href="${esc(r.url)}" target="_blank" rel="noopener">${esc(r.event)}</a><br>${esc(r.category)}</td><td>${esc(r.partner||'(solo)')}</td><td>${r.place??'–'} / ${r.entries}</td><td>${r.made_final?'Yes':'No'}</td><td>${r.rounds_danced??'–'}</td></tr>`).join('')}</tbody></table>`;
+  if(!scoreHistory)return;
+  const rows=scoreVisibleRows(),selected=catalogData.find(c=>String(c.cid)===$("scoreCompetition").value);
+  $("scoreStatus").textContent=`${scoreHistory.name} · ${selected?selected.name:'All competitions'} · ${rows.length} result entries across ${new Set(rows.map(r=>String(r.cid))).size} provider competition records.`+(scoreHistory.warnings?.length?' '+scoreHistory.warnings.join(' '):'');
+  $("scoreTable").innerHTML=`<table><thead><tr><th>Date / competition</th><th>Event</th><th>Partner</th><th>Place / field</th><th>Final</th><th>Rounds</th></tr></thead><tbody>${rows.map(r=>`<tr><td>${esc(r.date)}<br>${esc(r.comp)}</td><td class="wrap-ok"><a href="${esc(r.url)}" target="_blank" rel="noopener">${esc(r.event)}</a><br>${esc(r.category)}</td><td>${esc(r.partner||'(solo)')}</td><td>${r.place??'–'} / ${r.entries}</td><td>${r.made_final?'Yes':'No'}</td><td>${r.rounds_danced??'–'}</td></tr>`).join('')}</tbody></table>`;
 }
 function scoreEventKey(event){return JSON.stringify([String(event.cid),String(event.eid)]);}
+function populateScoreEvents() {
+  const events=new Map(scoreVisibleRows().map(e=>[scoreEventKey(e),e]));
+  $("scoreEvent").innerHTML='<option value="">All your results</option>'+[...events].map(([key,event])=>`<option value="${esc(key)}">${esc(event.comp)} · ${esc(event.event)}</option>`).join('');
+}
 $("scoreCompetition").addEventListener('change',()=>{
-  ++scoreSequence;$("scoreEvent").innerHTML='';$("scoreTable").textContent='';
-  const comp=catalogData.find(c=>String(c.cid)===$("scoreCompetition").value);
-  if(!comp||!scoreHistory)return;
-  showDancerCompetition();
-  const events=new Map(scoreHistory.events.filter(e=>comp.members.map(String).includes(String(e.cid))).map(e=>[scoreEventKey(e),e]));
-  $("scoreEvent").innerHTML='<option value="">All your results</option>'+[...events].map(([key,event])=>`<option value="${esc(key)}">${esc(event.event)}</option>`).join('');
+  ++scoreSequence;showDancerCompetition();populateScoreEvents();
 });
 $("scoreEvent").addEventListener('change',()=>{
   ++scoreSequence;const key=$("scoreEvent").value;

@@ -23,9 +23,15 @@ vm.runInContext(source.slice(start,source.indexOf('// ---------------- Upcoming 
   assert.match(element('scoreCompetition').innerHTML,/My O2 Cup/);
   assert.doesNotMatch(element('scoreCompetition').innerHTML,/Unrelated Cup/);
   assert.equal(element('scoreDancer').value,'Sam Example');
+  assert.equal(element('scoreCompetition').value,'');
+  assert.match(element('scoreTable').innerHTML,/Waltz/);
+  assert.match(element('scoreTable').innerHTML,/Tango/);
+  assert.match(element('scoreStatus').textContent,/All competitions/);
   element('scoreCompetition').value='1';context.showDancerCompetition();
   assert.match(element('scoreTable').innerHTML,/Waltz/);
   assert.doesNotMatch(element('scoreTable').innerHTML,/Tango|<th>Source/);
+  element('scoreCompetition').value='';context.showDancerCompetition();
+  assert.match(element('scoreTable').innerHTML,/Tango/);
   context.resetScoreHistory();context.state.data.scope_limited=true;
   await context.loadCatalog();
   assert.doesNotMatch(element('scoreCompetition').innerHTML,/My BCE Cup/);
