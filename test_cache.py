@@ -94,6 +94,58 @@ class ResultsCacheTests(unittest.TestCase):
             db.execute("UPDATE events SET version=0")
         self.assertEqual(store.get_events([(1, 12)]), {})
 
+    def membership_fixture(self):
+        pages = {core.RESULTS_URL: INDEX, core.BASE + "index.php": INDEX,
+                 core.RESULTS_URL + "?aid=123": '<h2>Sam Example</h2>' + INDEX,
+                 core.RESULTS_URL + "?aid=123&cid=1": comp_html(),
+                 core.RESULTS_URL + "?cid=1&eid=12": event_html(),
+                 core.RESULTS_URL + "?aid=123&cid=2": comp_html((13,), 'November 7, 2026'),
+                 core.RESULTS_URL + "?cid=2&eid=13": event_html(eid=13)}
+        fetcher = MemoryFetcher(self.directory.name, pages)
+        core.collect('', fetcher, aid=123)
+        comp = core.parse_comp_page(comp_html((13,), 'November 7, 2026'), 2)
+        comp.update(date='2026-11-07', end_date='2026-11-01')
+        fetcher.store.put_competition(comp, complete=True)
+        return fetcher
+
+    def test_refresh_discovers_recent_results_missing_from_dancer_overview(self):
+        fetcher = self.membership_fixture()
+        worker = CacheMaintainer(fetcher, delay=0)
+        self.assertEqual(worker.refresh_profiles(time.time(), date(2026, 11, 8)), 0)
+        self.assertEqual({c['cid'] for c in fetcher.store.get_profile(123)['comps']}, {1, 2})
+        self.assertTrue(any(url.endswith('?aid=123&cid=2') and options['max_age'] == 0 for url, options in fetcher.calls))
+        # Repeating a profile refresh without the recent-set hint cannot erase verified results.
+        data = core.collect('', fetcher, aid=123, refresh_profile=True)
+        self.assertEqual({e.cid for e in data['records']}, {1, 2})
+        fetcher.get = Mock(side_effect=AssertionError('Warm visitor searches must stay offline'))
+        self.assertEqual(len(core.collect('', fetcher, aid=123)['records']), 2)
+
+    def test_failed_recent_listing_preserves_history_and_is_not_checkpointed(self):
+        fetcher = self.membership_fixture()
+        core.collect('', fetcher, aid=123, refresh_profile=True, recent_competitions=fetcher.store.competition_metadata())
+        fetcher.pages.pop(core.RESULTS_URL + '?aid=123&cid=2')
+        worker = CacheMaintainer(fetcher, delay=0)
+        self.assertEqual(worker.refresh_profiles(time.time(), date(2026, 11, 8)), 1)
+        self.assertEqual({c['cid'] for c in fetcher.store.get_profile(123)['comps']}, {1, 2})
+        self.assertIsNone(fetcher.store.get_meta('profile_membership_refresh_123'))
+
+    def test_recent_probes_are_bounded_and_manual_refresh_ignores_weekly_checkpoint(self):
+        fetcher = self.membership_fixture()
+        for cid, day in [(3, '2026-11-09'), (4, '2025-01-01')]:
+            comp = core.parse_comp_page(comp_html(), cid)
+            comp.update(date=day, end_date=day)
+            fetcher.store.put_competition(comp, complete=True)
+        worker = CacheMaintainer(fetcher, delay=0)
+        start = time.time()
+        with patch.object(core, 'collect', return_value={'status':'ok'}) as collect:
+            self.assertEqual(worker.refresh_profiles(start, date(2026,11,8)), 0)
+            self.assertEqual(set(collect.call_args.kwargs['recent_competitions']), {2})
+            self.assertEqual(worker.refresh_profiles(start, date(2026,11,8)), 0)
+            self.assertEqual(collect.call_count, 1)
+            worker.refresh_profiles(start, date(2026,11,8), cids={4}, checkpointed=False)
+            self.assertEqual(set(collect.call_args.kwargs['recent_competitions']), {4})
+            self.assertEqual(collect.call_count, 2)
+
     def test_old_competition_freezes_but_manual_refresh_can_correct_it(self):
         url = core.RESULTS_URL + "?cid=1&eid=12"
         fetcher = MemoryFetcher(self.directory.name, {core.RESULTS_URL + "?cid=1": comp_html(), url: event_html()})
@@ -256,7 +308,7 @@ class ResultsCacheTests(unittest.TestCase):
         worker = CacheMaintainer(fetcher, delay=0, log=lambda message: None)
         self.assertTrue(worker.run_cycle(datetime(2026, 11, 5, 12, tzinfo=ZoneInfo("America/Chicago"))))
         self.assertEqual(fetcher.store.status()["refresh"]["state"], "complete")
-        self.assertIsNotNone(fetcher.store.get_meta("profile_refresh_123"))
+        self.assertIsNotNone(fetcher.store.get_meta("profile_membership_refresh_123"))
         event_calls = sum(url == event_url for url, _ in fetcher.calls)
         worker = CacheMaintainer(fetcher, delay=0, log=lambda message: None)
         self.assertTrue(worker.run_cycle(datetime(2026, 11, 5, 13, tzinfo=ZoneInfo("America/Chicago"))))

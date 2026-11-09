@@ -3,7 +3,7 @@ import argparse
 import json
 import threading
 import time
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
@@ -123,6 +123,46 @@ class CacheMaintainer:
             self.store.put_competition(comp, complete=True, frozen=old and bool(comp["events"]))
         return complete
 
+    def refresh_profiles(self, cycle_start, today, cids=None, checkpointed=True):
+        maintainer = self
+        recent = {}
+        for cid, info in self.store.competition_metadata().items():
+            if cids is not None:
+                if cid in cids:
+                    recent[cid] = info
+                continue
+            dates = []
+            for key in ("date", "end_date"):
+                try:
+                    dates.append(date.fromisoformat(info.get(key) or ""))
+                except (ValueError, TypeError):
+                    pass
+            if dates and 0 <= (today - max(dates)).days < 30:
+                recent[cid] = info
+        failures = 0
+        class ProfileFetcher:
+            store = maintainer.store
+            refresh = False
+
+            def get(self, url, **kwargs):
+                return maintainer._get(url, refresh=not kwargs.get("use_cache", True),
+                                       max_age=kwargs.get("max_age"), post_data=kwargs.get("post_data"),
+                                       **{key: kwargs[key] for key in ("cache_misses", "validate") if key in kwargs})
+
+        for aid in self.store.profile_ids():
+            self._yield()
+            checkpoint = f"profile_membership_refresh_{aid}"
+            if checkpointed and self.store.get_meta(checkpoint, 0) >= cycle_start:
+                continue
+            result = core.collect("", ProfileFetcher(), aid=aid, workers=1, refresh_profile=True, recent_competitions=recent,
+                         progress=lambda *args: self._yield())
+            if result["status"] in ("ok", "no_events", "no_aid_comps") and not result.get("profile_incomplete"):
+                if checkpointed:
+                    self.store.set_meta(checkpoint, time.time())
+            else:
+                failures += 1
+        return failures
+
     def run_cycle(self, now=None):
         now = now or datetime.now(self.zone)
         slot = weekly_slot(now).isoformat()
@@ -150,27 +190,8 @@ class CacheMaintainer:
         for cid in ids:
             if not self.refresh_competition(cid, metadata.get(cid, {}), cycle["started"], now.date()):
                 failures += 1
-        # Refresh known dancer membership weekly without reparsing indexed event results.
-        class ProfileFetcher:
-            store = maintainer.store
-            refresh = False
-
-            def get(self, url, **kwargs):
-                return maintainer._get(url, refresh=not kwargs.get("use_cache", True),
-                                       max_age=kwargs.get("max_age"), post_data=kwargs.get("post_data"),
-                                       **{key: kwargs[key] for key in ("cache_misses", "validate") if key in kwargs})
-
-        for aid in self.store.profile_ids():
-            self._yield()
-            checkpoint = f"profile_refresh_{aid}"
-            if self.store.get_meta(checkpoint, 0) >= cycle["started"]:
-                continue
-            result = core.collect("", ProfileFetcher(), aid=aid, workers=1, refresh_profile=True,
-                         progress=lambda *args: self._yield())
-            if result["status"] in ("ok", "no_events", "no_aid_comps"):
-                self.store.set_meta(checkpoint, time.time())
-            else:
-                failures += 1
+        # Recent competition listings are authoritative even when dancer overviews lag.
+        failures += self.refresh_profiles(cycle["started"], now.date())
         if failures:
             self.store.set_meta("refresh_status", {"state": "partial", "failed_competitions": failures, "updated_at": time.time()})
             return False
@@ -210,8 +231,10 @@ class CacheMaintainer:
                 if request.exists():
                     ids = json.loads(request.read_text())
                     request.unlink()
+                    today = datetime.now(self.zone).date()
                     for cid in ids:
-                        self.refresh_competition(int(cid), {}, time.time(), datetime.now(self.zone).date(), force=True)
+                        self.refresh_competition(int(cid), {}, time.time(), today, force=True)
+                    self.refresh_profiles(time.time(), today, cids={int(cid) for cid in ids}, checkpointed=False)
                 slot = weekly_slot(datetime.now(self.zone)).isoformat()
                 # Each provider has an independent checkpoint and failure/backoff state.
                 self.refresh_o2cm(slot)

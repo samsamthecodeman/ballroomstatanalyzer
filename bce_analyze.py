@@ -846,7 +846,7 @@ class Cancelled(Exception):
 
 
 def collect(name, fetcher, fuzzy=None, partner=None, cids=None, max_cid=None, aid=None,
-            workers=4, progress=None, refresh_profile=False, **_ignored):
+            workers=4, progress=None, refresh_profile=False, recent_competitions=None, **_ignored):
     """
     Scrape everything needed for one dancer.
 
@@ -876,6 +876,7 @@ def collect(name, fetcher, fuzzy=None, partner=None, cids=None, max_cid=None, ai
             ex.shutdown(wait=False, cancel_futures=True)
 
     store = getattr(fetcher, "store", None)
+    saved_profile = store.get_profile(aid, max_age=None) if store and aid else None
     profile = store.get_profile(aid) if store and aid and not fetcher.refresh and not refresh_profile else None
     overview = profile["overview"] if profile else None
     using_stale_profile = False
@@ -891,6 +892,7 @@ def collect(name, fetcher, fuzzy=None, partner=None, cids=None, max_cid=None, ai
             overview = fetcher.get(f"{RESULTS_URL}?aid={aid}", max_age=0 if refresh_profile else LIST_MAX_AGE)
             theirs = comp_list_entries(overview) if overview else {}
             if overview is None:
+                base["profile_incomplete"] = True
                 stale_profile = store.get_profile(aid, max_age=None) if store else None
                 if stale_profile:
                     using_stale_profile = True
@@ -898,6 +900,13 @@ def collect(name, fetcher, fuzzy=None, partner=None, cids=None, max_cid=None, ai
                     comps = {c["cid"]: c for c in stale_profile["comps"] if not cids or c["cid"] in cids}
                 else:
                     return {**base, "status": "bad_aid"}
+            # BCE's dancer overview can lag behind its competition-specific results.
+            # Preserve verified membership and probe only the bounded recent set
+            # supplied by the background refresher, never the full archive per search.
+            for known in (saved_profile or {}).get("comps", []):
+                theirs.setdefault(known["cid"], {key: known.get(key) for key in ("name", "date", "end_date")})
+            for cid, info in (recent_competitions or {}).items():
+                theirs.setdefault(cid, info)
             for cid, info in theirs.items():
                 meta.setdefault(cid, {}).update({k: v for k, v in info.items() if v})
             comp_ids = sorted(theirs)
@@ -916,9 +925,17 @@ def collect(name, fetcher, fuzzy=None, partner=None, cids=None, max_cid=None, ai
         # 2. Comp pages -> event lists. Freeze old dancer-specific listings too.
         def handle_comp(cid, html):
             if not html:
+                if aid:
+                    base["profile_incomplete"] = True
+                known = next((c for c in (saved_profile or {}).get("comps", []) if c["cid"] == cid), None)
+                if known:
+                    comps[cid] = known
                 return
             c = parse_comp_page(html, cid)
             if not c["events"]:
+                known = next((c for c in (saved_profile or {}).get("comps", []) if c["cid"] == cid), None)
+                if known:
+                    comps[cid] = known
                 return
             if cid in meta:
                 for key in ("name", "date", "end_date"):

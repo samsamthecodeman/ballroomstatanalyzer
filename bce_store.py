@@ -93,6 +93,13 @@ class ResultsStore:
                     metadata[comp["cid"]] = {key: comp.get(key) for key in ("name", "date", "end_date")}
         return metadata
 
+    def competition_metadata(self):
+        """Published competitions, independent of possibly lagging dancer overviews."""
+        with self.connect() as db:
+            rows = db.execute("SELECT cid,data FROM competitions").fetchall()
+        return {cid: {key: data.get(key) for key in ("name", "date", "end_date")}
+                for cid, payload in rows if (data := json.loads(payload)).get("events")}
+
     def event_updated(self, cid, eid):
         with self.connect() as db:
             row = db.execute("SELECT updated FROM events WHERE cid=? AND eid=? AND version=?", (cid, eid, PARSER_VERSION)).fetchone()

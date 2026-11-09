@@ -101,6 +101,8 @@ The initial historical population can take hours or longer. Searches continue wo
 
 Dates use the end of a multi-day competition. Corrections made after the 30-day window can be refreshed manually by the maintainer. Failed refreshes preserve the last successful results, and background population resumes from saved progress after a restart. Missed weekly runs are picked up when the website resumes.
 
+Dancer membership refreshes also check published competitions from the past 30 days directly, because BCE's dancer overview can lag behind competition-specific results. Previously verified competitions are preserved when omitted from that overview. Manual competition refreshes update known dancer listings too; normal repeat searches continue to use the shared index without these additional checks.
+
 Changing filters and exporting completed results make no upstream requests. Name suggestions use Ballroom Comp Express's public dancer search and cache successful query responses for a week.
 
 The website currently runs one analysis at a time, with other searches queued. Its configured defaults allow 20 search starts per visitor per hour and 200 across the website. Outbound request starts are spaced at least 0.6 seconds apart across download workers. These limits count searches, not the number of pages downloaded, and an uncached search can still read many pages.
