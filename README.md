@@ -8,7 +8,7 @@ Ballroom Stats Analyzer uses results from [Ballroom Comp Express](https://ballro
 
 ## Features
 
-- **Individual or couple analysis:** choose Individual for a dancer’s full history, or Couple and enter two names to analyze only their shared entries across BCE and O2CM. Couple mode starts head-to-head comparisons by opposing couple; mixed-event roles and YCN points remain specific to the first dancer.
+- **Individual or couple analysis:** choose Individual for a dancer’s full history, or Couple to analyze only two dancers’ shared entries across BCE and O2CM. Type at least three characters to choose a cached partnership and fill both names, or enter names manually. The second field also suggests known partners. Couple mode starts head-to-head comparisons by opposing couple; mixed-event roles and YCN points remain specific to the first dancer.
 - **Competition history:** view placements, wins, podiums, finals, average placement, and percentage of the field beaten.
 - **Performance trends:** track results over time and compare statistics by category, style, dance, level, division, and partner.
 - **Matchup analysis:** explore head-to-head comparisons by dancer or couple, plus opponents placed above and below you.

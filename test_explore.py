@@ -34,12 +34,29 @@ class ExploreTests(unittest.TestCase):
         self.addCleanup(self.temp.cleanup)
         self.store = ResultsStore(self.temp.name)
         explore._snapshot.clear()
+        explore._couples_cache.clear()
         for cid,state in [(1,'TX'),(2,'CA'),(3,'')]:
             self.store.put_competition({'cid':cid,'name':'Cup','date':'2026-11-07','events':[{'eid':1,'title':'Bronze Waltz'},{'eid':2,'title':'Mixed Follows Bronze Waltz'}]},complete=True)
             if state:self.store.put_external('bce','venue',str(cid),{'state':state,'city':'City'})
             results={'Alex Example & Sam Example':{'place':1,'made_final':True,'rounds':2},'Other One & Other Two':{'place':2,'made_final':True,'rounds':2}}
             self.store.put_event(cid,1,[results,2,'Amateur Bronze International Standard Waltz',{'n_rounds':2}])
             self.store.put_event(cid,2,[results,2,'Mixed Follows Bronze International Standard Waltz',{'n_rounds':2}])
+
+    def test_couple_suggestions_use_both_sources_and_merge_reversed_partners(self):
+        self.store.put_external('o2cm', 'competition', 'abc26', {'events': {'1': {'entries': [
+            {'people': ['Sam Example', 'Alex Example']},
+            {'people': ['Sam Example', 'O2 Partner']},
+            {'people': ['Solo Example']},
+            {'people': ['Team One', 'Team Two', 'Team Three']}]}}})
+        pairs = explore.search_couples(self.store, 'sam')
+        self.assertEqual(len(pairs), 2)
+        self.assertEqual({p['label'] for p in pairs}, {'Alex Example & Sam Example', 'O2 Partner & Sam Example'})
+        self.assertEqual(len(explore.search_couples(self.store, 'example sam')), 2)
+        self.assertEqual(len(explore.search_couples(self.store, 'example', 'Alex Example')), 1)
+        self.assertEqual(explore.search_couples(self.store, 'sa'), [])
+        self.assertEqual(explore.search_couples(self.store, 'solo'), [])
+        self.assertEqual(explore.search_couples(self.store, 'team'), [])
+        self.assertEqual(explore.search_couples(self.store, 'nonexistent'), [])
 
     def test_texas_wins_credit_judged_dancer_and_ignore_unknown_venues(self):
         data=explore.texas_leaderboard(self.store,{})

@@ -241,6 +241,14 @@ class Handler(BaseHTTPRequestHandler):
         if url.path == "/api/cache/status":
             return self._send(200, {"enabled": CACHE_MAINTAINER is not None,
                                     **(FETCHER.store.status() if FETCHER else {})})
+        if url.path == "/api/couples":
+            query = parse_qs(url.query)
+            text = query.get("q", [""])[0].strip()
+            if not 3 <= len(text) <= 100:
+                return self._send(400, {"error": "Enter between 3 and 100 characters."})
+            import bce_explore
+            return self._send(200, {"couples": bce_explore.search_couples(
+                FETCHER.store, text, query.get("dancer", [""])[0][:100])})
         if url.path == "/api/dancers":
             query = (parse_qs(url.query).get("q", [""])[0]).strip()
             if not 3 <= len(query) <= 80:
@@ -683,7 +691,9 @@ svg.chart .dot:hover, svg.chart .dot:focus { fill: var(--first-place); stroke: v
     <select id="analysisMode" aria-label="Analysis mode"><option value="individual">Individual</option><option value="couple">Couple</option></select>
     <input type="text" id="name" placeholder="Name or dancer ID" aria-label="Name or dancer ID" aria-describedby="dancerLookupStatus" list="dancerSuggestions" autocomplete="off">
     <datalist id="dancerSuggestions"></datalist>
-    <input type="text" id="couplePartner" placeholder="Second dancer’s full name" aria-label="Second dancer’s full name" autocomplete="off" hidden>
+    <datalist id="coupleSuggestions"></datalist>
+    <input type="text" id="couplePartner" placeholder="Second dancer’s full name" aria-label="Second dancer’s full name" list="partnerSuggestions" autocomplete="off" hidden>
+    <datalist id="partnerSuggestions"></datalist>
     <input type="text" id="aid" class="aid" aria-label="Ballroom Comp Express dancer ID" title="Ballroom Comp Express dancer ID" readonly hidden>
     <details class="opts">
       <summary>Options</summary>
@@ -1063,6 +1073,56 @@ fetch("/api/config").then((r) => r.json()).then((c) => {
 // ---------------- Search & progress ----------------
 const selectedSource = () => "all";
 const dancerLookup = {matches: new Map(), selectedName: "", timer: null, sequence: 0};
+const coupleLookup = {matches: new Map(), timer: null, sequence: 0};
+function chooseCouple(pair) {
+  coupleLookup.matches.clear();
+  $("name").value = pair.names[0];
+  $("couplePartner").value = pair.names[1];
+  $("aid").value = ""; $("aid").hidden = true;
+  dancerLookup.selectedName = "";
+  $("coupleSuggestions").replaceChildren();
+  $("partnerSuggestions").replaceChildren();
+  $("dancerLookupStatus").textContent = `Selected couple: ${pair.label}`;
+}
+async function lookupCouples(query, second = false) {
+  const sequence = ++coupleLookup.sequence;
+  if (query.length < 3) return;
+  const first = $("name").value.trim();
+  const dancer = second && !/^\d+$/.test(first) ? first : "";
+  try {
+    const response = await fetch("/api/couples?q=" + encodeURIComponent(query) + "&dancer=" + encodeURIComponent(dancer), {headers: {"X-Visitor": VISITOR_ID}});
+    const result = await response.json();
+    if (sequence !== coupleLookup.sequence || $("analysisMode").value !== "couple") return;
+    if (!response.ok) throw new Error(result.error || "Couple suggestions are unavailable.");
+    coupleLookup.matches.clear();
+    const options = result.couples.map(pair => {
+      const option = document.createElement("option");
+      const partner = dancer ? pair.names.find(name => norm(name) !== norm(dancer)) : null;
+      option.value = partner || pair.label;
+      option.label = pair.label;
+      coupleLookup.matches.set(option.value, partner ? {names: [first, partner], label: `${first} & ${partner}`} : pair);
+      return option;
+    });
+    $(second ? "partnerSuggestions" : "coupleSuggestions").replaceChildren(...options);
+    $("dancerLookupStatus").textContent = options.length ? "Choose a couple to fill both dancers. Suggestions use cached results." : "No cached partnerships match. You can still enter both full names manually.";
+  } catch (error) {
+    if (sequence === coupleLookup.sequence) $("dancerLookupStatus").textContent = error.message;
+  }
+}
+function coupleInput(second = false) {
+  clearTimeout(coupleLookup.timer);
+  ++coupleLookup.sequence;
+  const value = $(second ? "couplePartner" : "name").value.trim();
+  const selected = coupleLookup.matches.get(value);
+  if (selected) { chooseCouple(selected); return; }
+  coupleLookup.matches.clear();
+  $("coupleSuggestions").replaceChildren();
+  $("partnerSuggestions").replaceChildren();
+  if (!second) { $("aid").value = ""; $("aid").hidden = true; dancerLookup.selectedName = ""; }
+  if (value.length >= 3 && !/^\d+$/.test(value)) coupleLookup.timer = setTimeout(() => lookupCouples(value, second), 350);
+  else $("dancerLookupStatus").textContent = "Type at least 3 characters to find a couple, or enter both full names.";
+}
+$("couplePartner").addEventListener("input", () => coupleInput(true));
 function chooseDancer(dancer) {
   $("name").value = dancer.name;
   $("aid").value = dancer.id;
@@ -1100,6 +1160,7 @@ async function lookupDancers(query) {
 }
 $("name").addEventListener("input", () => {
   clearTimeout(dancerLookup.timer);
+  if ($("analysisMode").value === "couple") { ++dancerLookup.sequence; coupleInput(); return; }
   const value = $("name").value.trim();
   const selected = dancerLookup.matches.get(value);
   if (selected) { ++dancerLookup.sequence; chooseDancer(selected); return; }
@@ -1127,6 +1188,15 @@ updateSource();
 
 function updateAnalysisMode() {
   const couple = $("analysisMode").value === "couple";
+  clearTimeout(coupleLookup.timer); ++coupleLookup.sequence;
+  clearTimeout(dancerLookup.timer); ++dancerLookup.sequence;
+  coupleLookup.matches.clear();
+  $("dancerSuggestions").replaceChildren();
+  $("coupleSuggestions").replaceChildren();
+  $("partnerSuggestions").replaceChildren();
+  $("name").setAttribute("list", couple ? "coupleSuggestions" : "dancerSuggestions");
+  $("name").setAttribute("placeholder", couple ? "Search couples by dancer name" : "Name or dancer ID");
+  $("dancerLookupStatus").textContent = couple ? "Type at least 3 characters to find a couple, or enter both full names." : "Type at least 3 characters and choose a dancer";
   $("couplePartner").hidden = !couple;
   $("couplePartner").required = couple;
   $("partnerOption").classList.toggle("hidden", couple);

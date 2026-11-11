@@ -8,6 +8,40 @@ import bce_analyze as core
 _lock = threading.Lock()
 _snapshot = {}
 _catalog_cache = {}
+_couples_cache = {}
+
+
+def search_couples(store, query, dancer=''):
+    """Suggest observed partnerships using the local index, without provider requests."""
+    tokens = core.norm(query).split()
+    if len(core.clean(query)) < 3 or not tokens:
+        return []
+    key = str(store.path)
+    with _lock:
+        cached = _couples_cache.get(key)
+        if not cached or time.time() - cached[0] > 60:
+            pairs = {}
+            def add(people):
+                if len(people) != 2:
+                    return
+                people = sorted((core.clean(p) for p in people), key=core.norm)
+                identity = tuple(core.norm(p) for p in people)
+                if all(identity) and identity[0] != identity[1]:
+                    pairs.setdefault(identity, {'names': people, 'label': ' & '.join(people)})
+            from bce_store import PARSER_VERSION
+            with store.connect() as db:
+                for (payload,) in db.execute('SELECT payload FROM events WHERE version=?', (PARSER_VERSION,)):
+                    for entry in json.loads(payload)[0]:
+                        add(core.split_people(entry))
+                for (payload,) in db.execute("SELECT data FROM external_cache WHERE provider='o2cm' AND kind='competition'"):
+                    for event in json.loads(payload).get('events', {}).values():
+                        for entry in event.get('entries', []):
+                            add(entry['people'])
+            cached = (time.time(), sorted(pairs.items()))
+            _couples_cache[key] = cached
+    target = core.norm(dancer)
+    return [pair for identity, pair in cached[1]
+            if (not target or target in identity) and all(token in ' '.join(identity) for token in tokens)][:20]
 
 
 def refresh_locations(fetcher, progress=lambda: None):
