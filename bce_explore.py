@@ -181,6 +181,11 @@ def competition(store,cid,eid=None,source='all',dancer=''):
 
 
 def texas_leaderboard(store,filters):
+    mode = filters.get('mode', 'individual')
+    if mode not in ('individual', 'couple'):
+        raise ValueError('Choose Individual or Couple leaderboard.')
+    if mode == 'couple':
+        filters = {**filters, 'category': core.CAT_COUPLE}
     styles = [filters['style']] if filters.get('style') else []
     if 'styles' in filters:
         try: styles=json.loads(filters['styles'])
@@ -215,15 +220,18 @@ def texas_leaderboard(store,filters):
         for result in event['rows']:
             people=result['people']
             if any(re.search(r'\(#|^Entrant\s+\d',p) for p in people):continue
+            if mode == 'couple':
+                people = sorted(people, key=core.norm)
             if category==core.CAT_LEAD:people=people[:1] if len(people)==2 and event['source']=='bce' else []
             elif category==core.CAT_FOLLOW:people=people[1:] if len(people)==2 and event['source']=='bce' else []
             elif category==core.CAT_COUPLE and len(people)!=2:continue
             elif category==core.CAT_SOLO and len(people)!=1:continue
-            mirror=(comp.get('date'),core.norm(comp['name']),core.norm(event['title']),core.norm(result['entry']),result['place'],event['entries'],result['made_final'])
+            entry_key = tuple(core.norm(p) for p in people) if mode == 'couple' else core.norm(result['entry'])
+            mirror=(comp.get('date'),core.norm(comp['name']),core.norm(event['title']),entry_key,result['place'],event['entries'],result['made_final'])
             if comp.get('date') and mirror in seen_results and seen_results[mirror]!=event['source']:duplicates+=1;continue
             seen_results[mirror]=event['source']
-            for person in people:
-                identity=core.norm(person)
+            entrants = [(' & '.join(people), tuple(core.norm(p) for p in people))] if mode == 'couple' else [(p, core.norm(p)) for p in people]
+            for person, identity in entrants:
                 if identity in seen_names:continue
                 seen_names.add(identity)
                 row=names.setdefault(identity,{'name':person,'wins':0,'events':0,'comps':set(),'sources':set()})
@@ -234,8 +242,9 @@ def texas_leaderboard(store,filters):
     for i,row in enumerate(ordered,1):
         if row['wins']!=previous:rank=i;previous=row['wins']
         row.update(rank=rank,competitions=len(row.pop('comps')),sources=sorted(row['sources']))
-    search=core.norm(filters.get('q',''));matches=[r for r in ordered if not search or search in core.norm(r['name'])]
+    search=core.norm(filters.get('q',''));matches=[r for r in ordered if not search or
+        (all(token in core.norm(r['name']) for token in search.split()) if mode == 'couple' else search in core.norm(r['name']))]
     return {'rows':matches[:500],'matching_names':len(matches),'total_names':len(ordered),'updated':cached[0],
             'competitions':list(included.values()),'verified_texas':sum(c['state'].upper() in ('TX','TEXAS') for c in verified),
             'unknown_venues':sum(not c['state'] for c in comps),'years':sorted({(c.get('date') or '')[:4] for c in eligible}-{''},reverse=True),
-            'deduplicated':duplicates,'unclassified_events':skipped,'source':source,'region':region}
+            'deduplicated':duplicates,'unclassified_events':skipped,'source':source,'region':region,'mode':mode}

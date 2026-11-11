@@ -67,6 +67,42 @@ class ExploreTests(unittest.TestCase):
         self.assertEqual(data['unknown_venues'],1)
         self.assertEqual(len(data['competitions']),1)
 
+    def test_couple_leaderboard_counts_partnership_once_and_separates_partners(self):
+        data = self.store.get_events([(1, 1)])[(1, 1)]
+        data[0] = {'Sam Example & Different Partner': {'place':1,'made_final':True,'rounds':2}}
+        self.store.put_event(1, 3, data)
+        comp = self.store.competition(1)['data']
+        comp['events'].append({'eid':3,'title':data[2]})
+        self.store.put_competition(comp, complete=True)
+        board = explore.texas_leaderboard(self.store, {'mode':'couple','category':core.CAT_FOLLOW})
+        rows = {r['name']:r for r in board['rows']}
+        self.assertEqual(board['mode'], 'couple')
+        self.assertEqual(rows['Alex Example & Sam Example']['wins'], 1)
+        self.assertEqual(rows['Alex Example & Sam Example']['events'], 1)
+        self.assertEqual(rows['Different Partner & Sam Example']['wins'], 1)
+        self.assertEqual(rows['Alex Example & Sam Example']['rank'], rows['Different Partner & Sam Example']['rank'])
+        self.assertFalse(any(' & ' not in name for name in rows))
+        self.assertEqual(len(explore.texas_leaderboard(self.store, {'mode':'couple','q':'Sam Example Alex'})['rows']), 1)
+        self.assertEqual(explore.texas_leaderboard(self.store, {'mode':'couple','year':'2025'})['rows'], [])
+        self.assertEqual(explore.texas_leaderboard(self.store, {'mode':'couple','styles':'["International Latin"]'})['rows'], [])
+        with self.assertRaises(ValueError):
+            explore.texas_leaderboard(self.store, {'mode':'unknown'})
+
+    def test_couple_leaderboard_unifies_reversed_names_across_providers(self):
+        self.o2_fixture(name='Cup')
+        o2 = self.store.get_external('o2cm','competition','test26')['data']
+        o2['events']['ABC']['entries'][0].update(entry='Sam Example & Alex Example', people=['Sam Example','Alex Example'])
+        self.store.put_external('o2cm','competition','test26',o2)
+        board = explore.texas_leaderboard(self.store, {'mode':'couple'})
+        row = next(r for r in board['rows'] if r['name']=='Alex Example & Sam Example')
+        self.assertEqual(row['events'], 1)
+        self.assertEqual(row['wins'], 1)
+        self.assertEqual(row['competitions'], 1)
+        self.assertGreater(board['deduplicated'], 0)
+        national = explore.texas_leaderboard(self.store, {'mode':'couple','region':'national'})
+        row = next(r for r in national['rows'] if r['name']=='Alex Example & Sam Example')
+        self.assertEqual(row['wins'], 2)
+
     def test_filters_ties_search_and_orphan_rows(self):
         results={'Alex Example & Sam Example':{'place':1,'made_final':True,'rounds':1}}
         self.store.put_event(1,1,[results,1,'Amateur Bronze International Standard Waltz',{}])

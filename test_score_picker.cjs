@@ -2,7 +2,7 @@ const assert=require('node:assert/strict'),fs=require('node:fs'),vm=require('nod
 const source=fs.readFileSync(__dirname+'/bce_web.py','utf8'),nodes=new Map();
 const checks=[{value:'International Standard',checked:true},{value:'American Smooth',checked:true},{value:'International Latin',checked:false}];
 function element(id){if(!nodes.has(id))nodes.set(id,{value:'',textContent:'',innerHTML:'',listeners:{},classList:{add(){},remove(){}},
-  addEventListener(name,fn){this.listeners[name]=fn;},replaceChildren(){},querySelectorAll(selector){return selector==='input:checked'?checks.filter(c=>c.checked):checks;}});return nodes.get(id);}
+  addEventListener(name,fn){this.listeners[name]=fn;},setAttribute(key,value){this[key]=value;},replaceChildren(){},querySelectorAll(selector){return selector==='input:checked'?checks.filter(c=>c.checked):checks;}});return nodes.get(id);}
 const catalog=[{cid:1,name:'My BCE Cup',members:[1],source_label:'BCE'},{cid:'o2cm:test',name:'My O2 Cup',members:['o2cm:test'],source_label:'O2CM'},{cid:3,name:'Unrelated Cup',members:[3],source_label:'BCE'}];
 const events=[{cid:1,event:'Waltz',partner:'Partner A',place:1,entries:3,made_final:true,rounds_danced:2,url:'https://example.com',category:'Couple-judged'},
   {cid:'o2cm:test',event:'Tango',partner:'Partner B',place:2,entries:4,made_final:true,rounds_danced:1,url:'https://example.com',category:'Couple-judged'}];

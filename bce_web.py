@@ -718,14 +718,17 @@ svg.chart .dot:hover, svg.chart .dot:focus { fill: var(--first-place); stroke: v
     <h1 style="font-size:48px">Competition leaderboard</h1>
     <p>Ranked by total first-place finishes at verified U.S. national or Texas venues. Results always combine BCE and O2CM. This is not an official ranking or a ranking of residents.</p>
     <p class="note">Couple-judged wins credit both partners. Mixed leader/follower events credit the judged dancer. Solo wins credit the individual; team events are excluded. Tied first places count as wins, and equal win totals share a rank. Names are grouped as published, not verified dancer identities; identical names may refer to different people.</p>
+    <p class="note" id="leaderCoupleNote" hidden>Couple rankings count each win once for the partnership, using only couple-judged events. Different partners are ranked separately; reversing the two names counts as the same couple.</p>
     <form id="texasForm" class="tools">
+      <label>Rank <select id="leaderMode" aria-label="Leaderboard mode"><option value="individual">Individuals</option><option value="couple">Couples</option></select></label>
       <label>Region <select id="leaderRegion"><option value="texas">Texas</option><option value="national">U.S. national</option></select></label>
       <label>Year <select id="texasYear" aria-label="Leaderboard year"><option value="">All years</option></select></label>
       <label>Category <select id="texasCategory"><option value="">All</option></select></label>
       <div><span class="hint">Style</span><details class="opts" id="texasStylePicker"><summary id="texasStyleSummary" aria-label="Leaderboard styles">All styles</summary><div class="panel"><div id="texasStyle" role="group" aria-label="Choose leaderboard styles"></div><p class="hint">Check one or more styles. No styles checked includes all styles.</p><button type="button" class="linkbtn" id="clearTexasStyles">Clear styles</button></div></details></div>
       <label>Level <select id="texasLevel"><option value="">All</option></select></label>
       <label><input type="checkbox" id="texasUncontested"> Exclude uncontested events</label>
-      <label>Name <input id="texasName" type="search" placeholder="Find a published name"></label>
+      <label>Name or couple <input id="texasName" type="search" placeholder="Find a published name" autocomplete="off"></label>
+      <datalist id="leaderCoupleSuggestions"></datalist>
       <button class="btn" type="submit">Update leaderboard</button>
     </form>
     <p id="texasStatus" class="note" role="status"></p><div id="texasTable" class="scroll"></div>
@@ -1471,17 +1474,46 @@ function updateLeaderboardStyles() {
 }
 $("texasStyle").addEventListener("change",updateLeaderboardStyles);
 $("clearTexasStyles").addEventListener("click",()=>{$("texasStyle").querySelectorAll("input").forEach(input=>{input.checked=false;});updateLeaderboardStyles();});
+let leaderCategory = "Couple-judged", leaderCoupleTimer, leaderCoupleSequence = 0;
+function updateLeaderboardMode() {
+  const couple = $("leaderMode").value === "couple";
+  clearTimeout(leaderCoupleTimer); ++leaderCoupleSequence;
+  $("leaderCoupleSuggestions").replaceChildren();
+  if (couple) { leaderCategory = $("texasCategory").value; $("texasCategory").value = "Couple-judged"; }
+  else $("texasCategory").value = leaderCategory;
+  $("texasCategory").disabled = couple;
+  $("leaderCoupleNote").hidden = !couple;
+  $("texasName").setAttribute("list", couple ? "leaderCoupleSuggestions" : "");
+  $("texasName").setAttribute("placeholder", couple ? "Type 3+ characters to find a couple" : "Find a published name");
+}
+$("leaderMode").addEventListener("change", () => { updateLeaderboardMode(); loadTexas(); });
+$("texasName").addEventListener("input", () => {
+  clearTimeout(leaderCoupleTimer);
+  const sequence = ++leaderCoupleSequence, query = $("texasName").value.trim();
+  $("leaderCoupleSuggestions").replaceChildren();
+  if ($("leaderMode").value !== "couple" || query.length < 3) return;
+  leaderCoupleTimer = setTimeout(async () => {
+    try {
+      const data = await exploreApi("/api/couples?q=" + encodeURIComponent(query));
+      if (sequence !== leaderCoupleSequence || $("leaderMode").value !== "couple") return;
+      $("leaderCoupleSuggestions").replaceChildren(...data.couples.map(pair => {
+        const option = document.createElement("option"); option.value = pair.label; return option;
+      }));
+    } catch { /* The leaderboard can still filter manually entered names. */ }
+  }, 350);
+});
 async function loadTexas() {
   const sequence = ++texasSequence;
-  $("texasStatus").textContent = "Reading verified Texas results…";
-  const query = new URLSearchParams({source:exploreSource,region:$("leaderRegion").value,year:$("texasYear").value,category:$("texasCategory").value,styles:JSON.stringify(selectedLeaderboardStyles()),level:$("texasLevel").value,q:$("texasName").value,excludeUncontested:String($("texasUncontested").checked)});
+  $("texasStatus").textContent = "Reading verified competition results…";
+  const query = new URLSearchParams({source:exploreSource,mode:$("leaderMode").value,region:$("leaderRegion").value,year:$("texasYear").value,category:$("texasCategory").value,styles:JSON.stringify(selectedLeaderboardStyles()),level:$("texasLevel").value,q:$("texasName").value,excludeUncontested:String($("texasUncontested").checked)});
   $("texasStylePicker").open=false;
   try {
     const data = await exploreApi("/api/texas?"+query);
     if (sequence !== texasSequence) return;
     if ($("texasYear").options.length === 1) for (const year of data.years) {const option=document.createElement("option");option.value=year;option.textContent=year;$("texasYear").append(option);}
-    $("texasStatus").textContent = `${data.competitions.length} included ${data.region==='texas'?'Texas':'U.S.'} provider competition records · ${data.total_names} published names. Showing ${data.rows.length} of ${data.matching_names} matching names (maximum 500). ${data.unknown_venues} cached competitions still lack verified venue metadata and are excluded. ${data.deduplicated} exact cross-source entrant records counted once. ${data.unclassified_events} unclassified/team events excluded; O2CM mixed roles are not guessed. Coverage is limited to cached, verified venues, not every U.S. competition.`;
-    $("texasTable").innerHTML = `<table><thead><tr><th>Rank</th><th>Published name</th><th>Wins</th><th>Events</th><th>Competitions</th></tr></thead><tbody>${data.rows.map(r=>`<tr><td>${r.rank}</td><td>${esc(r.name)}</td><td class="${positiveClass(r.wins)}">${r.wins}</td><td>${r.events}</td><td>${r.competitions}</td></tr>`).join('')}</tbody></table>`;
+    const unit = data.mode === "couple" ? "couples" : "published names";
+    $("texasStatus").textContent = `${data.competitions.length} included ${data.region==='texas'?'Texas':'U.S.'} provider competition records · ${data.total_names} ${unit}. Showing ${data.rows.length} of ${data.matching_names} matching ${unit} (maximum 500). ${data.unknown_venues} cached competitions still lack verified venue metadata and are excluded. ${data.deduplicated} exact cross-source entrant records counted once. ${data.unclassified_events} unclassified/team events excluded; O2CM mixed roles are not guessed. Coverage is limited to cached, verified venues, not every U.S. competition.`;
+    $("texasTable").innerHTML = `<table><thead><tr><th>Rank</th><th>${data.mode === "couple" ? "Couple" : "Published name"}</th><th>Wins</th><th>Events</th><th>Competitions</th></tr></thead><tbody>${data.rows.map(r=>`<tr><td>${r.rank}</td><td>${esc(r.name)}</td><td class="${positiveClass(r.wins)}">${r.wins}</td><td>${r.events}</td><td>${r.competitions}</td></tr>`).join('')}</tbody></table>`;
     $("texasCoverage").innerHTML = data.competitions.map(c=>`<p>${esc(c.date)} — ${esc(c.name)} · ${esc(c.city)}, ${esc(c.state)} · ${c.provider==='bce'?'BCE':'O2CM'}${c.source?` · <a href="${esc(c.source)}" target="_blank" rel="noopener">Venue source</a>`:''}</p>`).join('') || '<p>No verified Texas results match these filters yet.</p>';
   } catch(error) {if(sequence===texasSequence) $("texasStatus").textContent=error.message;}
 }

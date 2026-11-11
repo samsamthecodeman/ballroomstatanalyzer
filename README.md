@@ -8,6 +8,7 @@ Ballroom Stats Analyzer uses results from [Ballroom Comp Express](https://ballro
 
 ## Features
 
+- **Individual or couple leaderboards:** rank published dancers or partnerships by total wins at Texas or U.S. national competitions. Couple rankings count couple-judged wins once per partnership and support couple search suggestions, year, multiple styles, level, and uncontested-event filters.
 - **Individual or couple analysis:** choose Individual for a dancer’s full history, or Couple to analyze only two dancers’ shared entries across BCE and O2CM. Type at least three characters to choose a cached partnership and fill both names, or enter names manually. The second field also suggests known partners. Couple mode starts head-to-head comparisons by opposing couple; mixed-event roles and YCN points remain specific to the first dancer.
 - **Competition history:** view placements, wins, podiums, finals, average placement, and percentage of the field beaten.
 - **Performance trends:** track results over time and compare statistics by category, style, dance, level, division, and partner.
