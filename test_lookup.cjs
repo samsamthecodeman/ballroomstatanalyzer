@@ -6,6 +6,7 @@ const nodes = new Map();
 function element(id) {
   if (!nodes.has(id)) nodes.set(id, {
     value: '', textContent: '', listeners: {}, children: [],
+    classList: {toggle() {}},
     addEventListener(event, fn) { this.listeners[event] = fn; },
     replaceChildren(...children) { this.children = children; },
     setAttribute(key, value) { this[key] = value; },
@@ -27,6 +28,7 @@ assert.match(source, /id="source" value="all"/);
 assert.doesNotMatch(source, /id="source(?:All|Bce|O2cm)"|data-explore-source=/);
 assert.match(source, /const selectedSource = \(\) => "all"/);
 element('source').value = 'all';
+element('analysisMode').value = 'individual';
 vm.runInContext(source.slice(start, source.indexOf('$("searchForm").addEventListener', start)), context);
 (async () => {
   await context.lookupDancers('Sam');
@@ -87,6 +89,25 @@ vm.runInContext(source.slice(start, source.indexOf('$("searchForm").addEventList
   await element('searchForm').listeners.submit({preventDefault() {}});
   assert.equal(payload.name, 'Jonny Lu');
   assert.equal(payload.aid, '');
+  element('analysisMode').value = 'couple';
+  element('analysisMode').listeners.change();
+  assert.equal(element('couplePartner').hidden, false);
+  assert.equal(element('couplePartner').required, true);
+  element('couplePartner').value = ' Partner Example ';
+  element('partner').value = 'Ignored individual filter';
+  element('fuzzy').checked = true;
+  await element('searchForm').listeners.submit({preventDefault() {}});
+  assert.equal(payload.analysis_mode, 'couple');
+  assert.equal(payload.partner, 'Partner Example');
+  assert.equal(payload.fuzzy, false);
+  element('analysisMode').value = 'individual';
+  element('analysisMode').listeners.change();
+  assert.equal(element('couplePartner').hidden, true);
+  assert.equal(element('couplePartner').required, false);
+  await element('searchForm').listeners.submit({preventDefault() {}});
+  assert.equal(payload.analysis_mode, 'individual');
+  assert.equal(payload.partner, 'Ignored individual filter');
+  assert.equal(payload.fuzzy, true);
   console.log('Passed: name selection, duplicate-name IDs, editing, stale response handling, and lookup errors.');
   console.log('Passed: always-unified name/ID submission despite hidden-field tampering and duplicate-name partnership handoff.');
 })().catch(error => { console.error(error); process.exitCode = 1; });

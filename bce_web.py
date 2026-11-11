@@ -128,6 +128,17 @@ def run_job(job_id: str, job: dict, params: dict) -> None:
         job.update(stage="start", message="Looking up saved results...")
         import bce_sources
         data = bce_sources.collect(params, FETCHER, progress=prog)
+        if params.get("analysis_mode") == "couple":
+            partner = params["partner"]
+            if core.norm(data.get("name") or params.get("name")) == core.norm(partner):
+                raise ValueError("Choose two different dancers for a couple analysis.")
+            # Keep exact two-person entries only, including across both providers.
+            raw = [(rec, field) for rec, field in data["raw_events"]
+                   if len(core.split_people(rec.entry)) == 2
+                   and core.norm(rec.partner) == core.norm(partner)]
+            data = {**data, "raw_events": raw, "records": [rec for rec, _ in raw]}
+            if not raw and data["status"] == "ok":
+                data["status"] = "no_couple_results"
     except core.Cancelled:
         job["state"] = "cancelled"
         return
@@ -160,6 +171,10 @@ def run_job(job_id: str, job: dict, params: dict) -> None:
     job["result"] = {
         "status": data["status"],
         "name": data.get("name") or params.get("name") or "",
+        "analysis_mode": params.get("analysis_mode", "individual"),
+        "couple_partner": params.get("partner", "") if params.get("analysis_mode") == "couple" else "",
+        "display_name": (f"{data.get('name') or params.get('name') or ''} & {params['partner']}"
+                         if params.get("analysis_mode") == "couple" else data.get("name") or params.get("name") or ""),
         "aid": data.get("aid", params.get("aid")),
         "source": params.get("source", "bce"),
         "scope_limited": bool(params.get("cids") or params.get("partner")),
@@ -335,7 +350,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self._send(400, {"error": "Choose CSV or PDF."})
             filters = params.get("filters", {})
             try:
-                result = job["result"]
+                result = dict(job["result"])
+                result["name"] = result.get("display_name") or result["name"]
                 events = bce_export.select_events(result, filters)
                 body = bce_export.csv_report(events) if fmt == "csv" else bce_export.pdf_report(result, events, filters)
             except ValueError as exc:
@@ -353,6 +369,16 @@ class Handler(BaseHTTPRequestHandler):
             params["source"] = source
             params.pop("first", None); params.pop("last", None); params.pop("o2_comps", None)
             params["partner"] = str(params.get("partner") or "").strip()[:100]
+            mode = params.get("analysis_mode", "individual")
+            if mode not in ("individual", "couple"):
+                return self._send(400, {"error": "Choose Individual or Couple analysis."})
+            params["analysis_mode"] = mode
+            if mode == "couple":
+                if not core.norm(params["partner"]) or params["partner"].isdigit():
+                    return self._send(400, {"error": "Enter the second dancer’s name for a couple analysis."})
+                if core.norm(name) == core.norm(params["partner"]):
+                    return self._send(400, {"error": "Choose two different dancers for a couple analysis."})
+                params["fuzzy"] = False
             params["cids"] = str(params.get("cids") or "").strip()[:200]
             if params["cids"]:
                 return self._send(400, {"error": "Use Competition scores to filter by competition."})
@@ -477,6 +503,7 @@ form.search { grid-column: 4 / span 9; display: flex; gap: 12px; align-items: ce
 @media (max-width: 900px) { .brand, form.search, .search-hint { grid-column: 1 / -1; } form.search { justify-content: flex-start; margin-top: 12px; } .search-hint { text-align: left; } }
 form.search input[type=text] { width: 240px; max-width: 100%; height: 40px; padding: 0 12px; border: 1px solid var(--ink); border-radius: 0; background: var(--bg); }
 form.search input[type=text].aid { width: 130px; }
+form.search select { height: 40px; padding: 0 10px; border: 1px solid var(--ink); background: var(--bg); }
 form.search input::placeholder, .tools input::placeholder { color: var(--grey); }
 
 .btn { height: 40px; padding: 0 20px; border: 1px solid var(--ink); border-radius: 0; background: var(--ink); color: var(--bg); font-weight: 600; cursor: pointer; }
@@ -653,14 +680,16 @@ svg.chart .dot:hover, svg.chart .dot:focus { fill: var(--first-place); stroke: v
   <a class="brand" href="/" aria-label="Ballroom Stats Analyzer home">Ballroom Stats Analyzer</a>
   <form class="search" id="searchForm">
     <input type="hidden" id="source" value="all">
+    <select id="analysisMode" aria-label="Analysis mode"><option value="individual">Individual</option><option value="couple">Couple</option></select>
     <input type="text" id="name" placeholder="Name or dancer ID" aria-label="Name or dancer ID" aria-describedby="dancerLookupStatus" list="dancerSuggestions" autocomplete="off">
     <datalist id="dancerSuggestions"></datalist>
+    <input type="text" id="couplePartner" placeholder="Second dancer’s full name" aria-label="Second dancer’s full name" autocomplete="off" hidden>
     <input type="text" id="aid" class="aid" aria-label="Ballroom Comp Express dancer ID" title="Ballroom Comp Express dancer ID" readonly hidden>
     <details class="opts">
       <summary>Options</summary>
       <div class="panel">
-        <label class="check"><input type="checkbox" id="fuzzy"> <span>Match similar spellings<br><span class="hint">Finds “Jon” when you type “John”.</span></span></label>
-        <label>Only with partner<input type="text" id="partner" placeholder="Optional"></label>
+        <label class="check" id="fuzzyOption"><input type="checkbox" id="fuzzy"> <span>Match similar spellings<br><span class="hint">Finds “Jon” when you type “John”.</span></span></label>
+        <label id="partnerOption">Only with partner<input type="text" id="partner" placeholder="Optional"></label>
         <input type="hidden" id="cids" value="">
       </div>
     </details>
@@ -727,6 +756,7 @@ svg.chart .dot:hover, svg.chart .dot:focus { fill: var(--first-place); stroke: v
       <h1 id="whoName"></h1>
       <p class="sub" id="whoSub"></p>
       <p class="note hidden" id="sourceNotice"></p>
+      <p class="note hidden" id="coupleNotice">Couple analysis includes only entries where these two dancers competed together. Mixed leader/follower results still credit the judged role. YCN points below describe the first dancer’s roles in these shared events, not combined couple eligibility.</p>
       <p class="sub alt hidden" id="whoAlt"></p>
       <div class="exports">
         <button class="btn quiet" id="exportCsv" type="button">Export CSV</button>
@@ -1095,11 +1125,24 @@ function updateSource() {
 }
 updateSource();
 
+function updateAnalysisMode() {
+  const couple = $("analysisMode").value === "couple";
+  $("couplePartner").hidden = !couple;
+  $("couplePartner").required = couple;
+  $("partnerOption").classList.toggle("hidden", couple);
+  $("fuzzyOption").classList.toggle("hidden", couple);
+}
+$("analysisMode").addEventListener("change", updateAnalysisMode);
+updateAnalysisMode();
+
 $("searchForm").addEventListener("submit", async (e) => {
   e.preventDefault();
   selectPage("analysis");
   let name = $("name").value.trim(), aid = dancerLookup.selectedName === $("name").value.trim() ? $("aid").value.trim() : "";
   const source = selectedSource();
+  const analysis_mode = $("analysisMode").value;
+  const partner = (analysis_mode === "couple" ? $("couplePartner") : $("partner")).value.trim();
+  if (analysis_mode === "couple" && !partner) { $("couplePartner").focus(); return; }
   if (/^\d+$/.test(name)) { aid = name; name = ""; }
   if (!name && !aid) { $("name").focus(); return; }
   if (source === "bce" && aid && !/^\d+$/.test(aid)) return fail("A dancer ID is a number, like 10062.");
@@ -1119,8 +1162,8 @@ $("searchForm").addEventListener("submit", async (e) => {
   setStatus("Starting…", 0);
   try {
     const res = await fetch("/api/start", {method: "POST", headers: {"Content-Type": "application/json", "X-Visitor": VISITOR_ID},
-      body: JSON.stringify({source, name, aid, fuzzy: $("fuzzy").checked,
-                            partner: $("partner").value.trim(), cids: $("cids").value.trim()})});
+      body: JSON.stringify({source, name, aid, analysis_mode, fuzzy: analysis_mode === "individual" && $("fuzzy").checked,
+                            partner, cids: $("cids").value.trim()})});
     const j = await res.json();
     if (!res.ok) throw new Error(j.error || "The search didn’t start.");
     state.jobId = j.id;
@@ -1180,6 +1223,7 @@ function show(id) {
 }
 
 function handleResult(res) {
+  if (res.status === "no_couple_results" || (res.analysis_mode === "couple" && !res.events.length && ["no_all_results", "no_events", "no_o2_results"].includes(res.status))) return fail("No shared results were found for this couple. Check both names as published in the results, or analyze each dancer individually.");
   if (res.status === "no_all_results") return fail("No matching results were found across the selected sources. " + (res.warnings || []).join(" "));
   if (res.status === "no_o2_results") return fail("No O2CM results matched that exact name and filters. Check the spelling, partner, and competition codes.");
   if (res.status === "bad_aid") return fail(`Couldn’t open the results page for dancer ID ${res.aid}. Check the number and try again.`);
@@ -1200,6 +1244,8 @@ function handleResult(res) {
   $("aid").hidden = !res.aid;
   dancerLookup.selectedName = res.aid ? $("name").value.trim() : "";
   state.data = res;
+  state.h2hBy = res.analysis_mode === "couple" ? "couple" : "dancer";
+  $("coupleNotice").classList.toggle("hidden", res.analysis_mode !== "couple");
   $("sourceNotice").textContent = (res.warnings || []).join(" ");
   $("sourceNotice").classList.toggle("hidden", !(res.warnings || []).length);
   state.filters = {style: "", level: "", category: "", division: "", partner: "", excludeUncontested: false, excludeThreeCouplePodiums: false};
@@ -1686,7 +1732,7 @@ function renderComparison() {
     [state.fieldMode === "finals" ? "Finals field beaten" : "Total field beaten", s=>pct(s.avgPct)]
   ];
   const summaries = columns.map(c=>summary(c.events));
-  $("compareStats").innerHTML = `<table><thead><tr><th>Metric</th>${columns.map((c,i)=>`<th>${esc(c.data.name)}${i===0?' (you)':''}</th>`).join('')}</tr></thead><tbody>${metrics.map(([label,value])=>`<tr><td>${esc(label)}</td>${columns.map((c,i)=>`<td class="${['Wins','Win rate','Top-3 finishes','Finals','Finals rate','Total field beaten','Finals field beaten'].includes(label)?positiveClass(value(summaries[i],c.events)):''}">${esc(value(summaries[i],c.events))}</td>`).join('')}</tr>`).join('')}</tbody></table>`;
+  $("compareStats").innerHTML = `<table><thead><tr><th>Metric</th>${columns.map((c,i)=>`<th>${esc(c.data.display_name || c.data.name)}${i===0?' (you)':''}</th>`).join('')}</tr></thead><tbody>${metrics.map(([label,value])=>`<tr><td>${esc(label)}</td>${columns.map((c,i)=>`<td class="${['Wins','Win rate','Top-3 finishes','Finals','Finals rate','Total field beaten','Finals field beaten'].includes(label)?positiveClass(value(summaries[i],c.events)):''}">${esc(value(summaries[i],c.events))}</td>`).join('')}</tr>`).join('')}</tbody></table>`;
   $("compareWarnings").textContent = comparison.data.map(d => (d.warnings || []).length ? `${d.name}: ${(d.warnings || []).join(' ')}` : '').filter(Boolean).join(' ');
   $("compareMeetings").textContent = "Head-to-head against each dancer after filters. Outcomes are from your perspective. Open a dancer to see shared events.";
   $("compareEvents").innerHTML = columns.slice(1).map(({data,events})=>{
@@ -1703,7 +1749,7 @@ function render() {
   $("fieldMode").value = state.fieldMode;
   const evs = filtered();
   const d = state.data;
-  $("whoName").textContent = d.name;
+  $("whoName").textContent = d.display_name || d.name;
   const comps = new Set(evs.map((e) => e.cid));
   const dates = evs.map((e) => e.date).filter(Boolean).sort();
   const span = dates.length ? `, ${fmtDate(dates[0])} to ${fmtDate(dates[dates.length - 1])}` : "";
