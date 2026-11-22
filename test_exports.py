@@ -47,6 +47,21 @@ class ExportTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 bce_export.select_events(self.result, invalid)
 
+    def test_multiple_styles_match_dashboard_and_pdf_scope(self):
+        filters = {"style": ["International Standard", "American Smooth"]}
+        selected = bce_export.select_events(self.result, filters)
+        self.assertEqual(len(selected), 2)
+        self.assertEqual(len(bce_export.select_events(self.result, {"style": []})), 2)
+        self.assertEqual(len(bce_export.select_events(self.result, {"style": ["International Standard"]})), 1)
+        self.assertEqual(bce_export.select_events(self.result, {**filters, "level": "Bronze"}), [])
+        for value in (None, 1, [1], [["International Standard"]], ["x"] * 31):
+            with self.subTest(value=value), self.assertRaises(ValueError):
+                bce_export.select_events(self.result, {"style": value})
+        from pypdf import PdfReader
+        report = bce_export.pdf_report(self.result, selected, filters)
+        text = ' '.join(page.extract_text() for page in PdfReader(io.BytesIO(report)).pages)
+        self.assertIn('Style: International Standard, American Smooth', text)
+
     def test_csv_unicode_quotes_newlines_and_formula_safety(self):
         events = [sample_event(comp='Cup, "Final"\nDay 2', partner="=HYPERLINK(1)", place=None)]
         report = bce_export.csv_report(events)

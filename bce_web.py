@@ -602,6 +602,10 @@ section.collapsed .sec-toggle::before { transform: translateY(-1px) rotate(-45de
 
 /* ---------- filters ---------- */
 .filters { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 16px var(--gutter); align-items: end; }
+.style-checks { grid-column: 1 / -1; min-width: 0; margin: 0; padding: 12px 16px; border: 1px solid var(--hair); }
+.style-checks legend { padding: 0 6px; font-size: 13px; color: var(--grey); }
+.style-checks p { margin: 0 0 8px; }
+.style-checks > div { display: flex; flex-wrap: wrap; gap: 4px 24px; }
 .filters .linkbtn { justify-self: start; height: 36px; }
 .filters label { display: grid; gap: 6px; font-size: 13px; color: var(--grey); }
 .filters label.check-inline { display: flex; align-items: center; gap: 8px; min-height: 36px; color: var(--ink); }
@@ -959,7 +963,7 @@ const pct = (x) => x == null ? "–" : Math.round(x) + "%";
 
 const state = {
   fieldMode: "total",
-  data: null, filters: {style: "", level: "", category: "", division: "", partner: "", excludeUncontested: false, excludeThreeCouplePodiums: false},
+  data: null, filters: {style: [], level: "", category: "", division: "", partner: "", excludeUncontested: false, excludeThreeCouplePodiums: false},
   bdKey: "category", bdSort: {key: "events", dir: -1},
   limits: {breakdown: "all", h2h: "10", rivals: "10", events: "25"}, collapsed: {}, ycnLevels: {}, ycnRole: "",
   rivStyle: "", rivDance: "", rivSort: {key: "above", dir: -1}, rivOpen: null, h2hBy: "dancer", h2hSort: {key: "meetings", dir: -1}, evSort: {key: "order", dir: 1},
@@ -1321,7 +1325,7 @@ function handleResult(res) {
   $("coupleNotice").classList.toggle("hidden", res.analysis_mode !== "couple");
   $("sourceNotice").textContent = (res.warnings || []).join(" ");
   $("sourceNotice").classList.toggle("hidden", !(res.warnings || []).length);
-  state.filters = {style: "", level: "", category: "", division: "", partner: "", excludeUncontested: false, excludeThreeCouplePodiums: false};
+  state.filters = {style: [], level: "", category: "", division: "", partner: "", excludeUncontested: false, excludeThreeCouplePodiums: false};
   state.openOpp = null;
   state.rivOpen = null;
   state.rivStyle = "";
@@ -1387,7 +1391,7 @@ function passesEventExclusions(e) {
 function filterEvents(events) {
   const f = state.filters;
   return events.filter((e) =>
-    (!f.style || e.style === f.style) && (!f.level || e.level === f.level) &&
+    (Array.isArray(f.style) ? !f.style.length || f.style.includes(e.style) : !f.style || e.style === f.style) && (!f.level || e.level === f.level) &&
     (!f.category || e.category === f.category) && (!f.division || e.division === f.division) && (!f.partner || (e.partner || "(solo)") === f.partner) &&
     passesEventExclusions(e));
 }
@@ -1870,7 +1874,7 @@ function render() {
   renderEvents(evs);
   renderComparison();
 }
-const isFiltered = () => Object.values(state.filters).some(Boolean);
+const isFiltered = () => Object.values(state.filters).some(value => Array.isArray(value) ? value.length > 0 : Boolean(value));
 function fmtDate(iso) {
   const [y, m, dd] = iso.split("-").map(Number);
   return new Date(y, m - 1, dd).toLocaleDateString(undefined, {month: "short", year: "numeric"});
@@ -1920,14 +1924,19 @@ function buildFilters() {
     const vals = [...new Set(evs.map((e) => key === "partner" ? (e.partner || "(solo)") : e[key]))];
     return key === "category" ? vals.sort((a, b) => CAT_ORDER.indexOf(a) - CAT_ORDER.indexOf(b)) : vals.sort();
   };
-  const defs = [["category", "Category"], ["style", "Style"], ["level", "Level"], ["division", "Division"], ["partner", "Partner"]];
+  const defs = [["style", "Style"], ["category", "Category"], ["level", "Level"], ["division", "Division"], ["partner", "Partner"]];
   $("filters").innerHTML = defs.map(([k, label]) =>
+    k === "style" ? `<fieldset class="style-checks"><legend>Style</legend><p class="hint">Select one or more styles. None checked includes all styles.</p><div>${opts(k).map(o => `<label class="check-inline"><input type="checkbox" data-style="${esc(o)}"${(state.filters.style || []).includes(o) ? " checked" : ""}>${esc(o)}</label>`).join("")}</div></fieldset>` :
     `<label>${label}<select data-f="${k}"><option value="">All</option>${opts(k).map((o) => `<option>${esc(o)}</option>`).join("")}</select></label>`
   ).join("") + `<label class="check-inline" title="Hide events with exactly one entry (one couple or individual)."><input type="checkbox" id="excludeUncontested"${state.filters.excludeUncontested ? " checked" : ""}>Exclude uncontested events</label>` +
     `<label class="check-inline" title="Exclude finishes of 1st, 2nd, or 3rd when exactly three couples competed. Solo events remain included."><input type="checkbox" id="excludeThreeCouplePodiums"${state.filters.excludeThreeCouplePodiums ? " checked" : ""}>Exclude top-3 finishes in 3-couple events</label>` +
     `<button class="linkbtn" id="resetF" type="button">Clear filters</button>`;
   $("filters").querySelectorAll("select").forEach((s) => s.addEventListener("change", () => {
     state.filters[s.dataset.f] = s.value; state.openOpp = null; render();
+  }));
+  $("filters").querySelectorAll("input[data-style]").forEach(input => input.addEventListener("change", () => {
+    state.filters.style = [...$("filters").querySelectorAll("input[data-style]:checked")].map(box => box.dataset.style);
+    state.openOpp = null; state.rivOpen = null; render();
   }));
   for (const key of ["excludeUncontested", "excludeThreeCouplePodiums"]) {
     $(key).addEventListener("change", (event) => {
@@ -1937,9 +1946,10 @@ function buildFilters() {
   }
   $("resetF").addEventListener("click", () => {
     $("filters").querySelectorAll("select").forEach((s) => { s.value = ""; });
+    $("filters").querySelectorAll("input[data-style]").forEach(input => { input.checked = false; });
     $("excludeUncontested").checked = false;
     $("excludeThreeCouplePodiums").checked = false;
-    state.filters = {style: "", level: "", category: "", division: "", partner: "", excludeUncontested: false, excludeThreeCouplePodiums: false}; render();
+    state.filters = {style: [], level: "", category: "", division: "", partner: "", excludeUncontested: false, excludeThreeCouplePodiums: false}; render();
   });
 }
 

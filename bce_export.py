@@ -28,15 +28,20 @@ def is_three_couple_podium(event):
 
 
 def select_events(result, filters):
+    def valid_style(value):
+        return isinstance(value, str) or (isinstance(value, list) and len(value) <= 30
+               and all(isinstance(style, str) and len(style) <= 100 for style in value))
     if not isinstance(filters, dict) or any(
         (not isinstance(value, bool) if key in EVENT_EXCLUSIONS else
+         not valid_style(value) if key == "style" else
          key not in FILTERS or not isinstance(value, str)) for key, value in filters.items()
     ):
         raise ValueError("Invalid export filters.")
     return [event for event in result["events"]
             if not (filters.get("excludeUncontested") and event.get("entries") == 1)
             and not (filters.get("excludeThreeCouplePodiums") and is_three_couple_podium(event)) and all(
-        not value or (event.get(key) or ("(solo)" if key == "partner" else "")) == value
+        not value or (event.get(key) in value if key == "style" and isinstance(value, list) else
+                      (event.get(key) or ("(solo)" if key == "partner" else "")) == value)
         for key, value in filters.items() if key in FILTERS
     )]
 
@@ -115,7 +120,7 @@ def pdf_report(result, events, filters):
     source_label = "ballroomcompexpress.com + results.o2cm.com" if combined else "results.o2cm.com" if o2cm else "ballroomcompexpress.com"
     scope = "; ".join("Uncontested events: excluded" if key == "excludeUncontested" else
                       "Top-3 finishes in 3-couple events: excluded" if key == "excludeThreeCouplePodiums" else
-                      f"{key.title()}: {value}" for key, value in filters.items() if value) or "All search results"
+                      f"{key.title()}: {', '.join(value) if isinstance(value, list) else value}" for key, value in filters.items() if value) or "All search results"
     dates = sorted(e["date"] for e in events if e.get("date"))
     story = [p("BALLROOM STATS ANALYZER"), p(result.get("name") or "Dancer results", "ReportTitle"),
              p(("Sources: Ballroom Comp Express + O2CM" if combined else "Source: O2CM | Exact-name search" if o2cm else f"Dancer ID: {result.get('aid') or 'Not specified'}") + f" | Generated {generated}"),

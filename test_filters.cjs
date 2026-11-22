@@ -27,10 +27,17 @@ function load(start, end) {
 }
 load('function passesEventExclusions(e) {', 'function summary(');
 load('function buildFilters() {', 'function renderChart(');
+const styleBoxes = ['International Standard', 'International Latin', 'American Smooth'].map(style => ({
+  dataset:{style},checked:false,listeners:{},addEventListener(event,fn){this.listeners[event]=fn;}
+}));
+element('filters').querySelectorAll = selector => selector === 'input[data-style]' ? styleBoxes
+  : selector === 'input[data-style]:checked' ? styleBoxes.filter(box=>box.checked) : [];
 load('function renderYcn() {', '$("ycnRoles").addEventListener');
 assert.equal(context.filtered().length, 5);
 context.buildFilters();
 assert.match(element('filters').innerHTML, /Exclude uncontested events/);
+assert.match(element('filters').innerHTML, /fieldset class="style-checks"/);
+assert.doesNotMatch(element('filters').innerHTML, /select data-f="style"/);
 element('excludeUncontested').listeners.change({target: {checked: true}});
 assert.deepEqual(Array.from(context.filtered(), e => e.entries), [2, 8, null, 0]);
 assert.equal(context.state.openOpp, null);
@@ -111,3 +118,21 @@ assert.equal(context.state.filters.excludeThreeCouplePodiums, false);
 assert.equal(element('excludeThreeCouplePodiums').checked, false);
 assert.equal(context.filtered().length, 11);
 console.log('Passed: exact 3-couple podium exclusion, solo and unknown-data preservation, combined filters, and reset.');
+context.state.data.events = styleBoxes.map((box,eid)=>({...events[0],style:box.dataset.style,eid,entries:eid+1}));
+context.buildFilters();
+styleBoxes[0].checked = styleBoxes[1].checked = true;
+styleBoxes[1].listeners.change();
+assert.deepEqual(Array.from(context.state.filters.style),['International Standard','International Latin']);
+assert.deepEqual(Array.from(context.filtered(),event=>event.eid),[0,1]);
+element('excludeUncontested').listeners.change({target:{checked:true}});
+assert.deepEqual(Array.from(context.filtered(),event=>event.eid),[1]);
+styleBoxes[0].checked = styleBoxes[1].checked = false;
+styleBoxes[0].listeners.change();
+assert.deepEqual(Array.from(context.filtered(),event=>event.eid),[1,2]);
+styleBoxes[2].checked=true;
+styleBoxes[2].listeners.change();
+element('resetF').listeners.click();
+assert.equal(styleBoxes.some(box=>box.checked),false);
+assert.equal(context.state.filters.style.length,0);
+assert.equal(context.filtered().length,3);
+console.log('Passed: multiple style checkboxes, union of styles, combined exclusions, no selection includes all, and reset.');
