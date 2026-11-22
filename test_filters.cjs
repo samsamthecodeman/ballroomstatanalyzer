@@ -38,6 +38,7 @@ context.buildFilters();
 assert.match(element('filters').innerHTML, /Exclude uncontested events/);
 assert.match(element('filters').innerHTML, /fieldset class="style-checks"/);
 assert.doesNotMatch(element('filters').innerHTML, /select data-f="style"/);
+assert.doesNotMatch(element('filters').innerHTML, /data-f="division"/);
 element('excludeUncontested').listeners.change({target: {checked: true}});
 assert.deepEqual(Array.from(context.filtered(), e => e.entries), [2, 8, null, 0]);
 assert.equal(context.state.openOpp, null);

@@ -15,7 +15,7 @@ import bce_web
 def sample_event(**changes):
     event = dict(date="2026-10-10", cid=101, eid=12, comp="Fall Classic & Collegiate Open",
                  event="Mixed Follows Collegiate Newcomer International Standard Quickstep",
-                 category="Mixed proficiency – follower judged", role="Follower", partner="Alex García",
+                 category="Solo proficiency follows", role="Follower", partner="Alex García",
                  place=1, entries=18, made_final=True, percentile=100, style="International Standard",
                  level="Newcomer", division="Mixed Am", age="Collegiate", dances=["Quickstep"],
                  entry="Alex García & Zoë Example", url="https://ballroomcompexpress.com/results.php?cid=101&eid=12")

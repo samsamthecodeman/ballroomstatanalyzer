@@ -4,6 +4,14 @@ from bce_analyze import CAT_COUPLE, CAT_FOLLOW, CAT_LEAD, CAT_SOLO, event_catego
 
 
 class EventCategoryTests(unittest.TestCase):
+    def test_solo_proficiency_names_include_mixed_role_aliases(self):
+        self.assertEqual(CAT_LEAD, 'Solo proficiency leads')
+        self.assertEqual(CAT_FOLLOW, 'Solo proficiency follows')
+        for title in ('Solo Proficiency Leads Bronze Waltz', 'Mixed Leads Bronze Waltz'):
+            self.assertEqual(event_category(title), CAT_LEAD)
+        for title in ('Solo Proficiency Follows Bronze Waltz', 'Mixed Follows Bronze Waltz'):
+            self.assertEqual(event_category(title), CAT_FOLLOW)
+
     def test_social_and_country_are_distinct_styles(self):
         from bce_analyze import classify, STYLE_PATTERNS
         cases = {'Country Waltz':'Country','Country West Coast Swing':'Country',

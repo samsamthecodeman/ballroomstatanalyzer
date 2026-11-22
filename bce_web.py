@@ -638,6 +638,7 @@ th:last-child, td:last-child { padding-right: 0; }
 th { font-size: 13px; font-weight: 500; color: var(--grey); border-bottom: 2px solid var(--ink); padding-top: 0; }
 th.sort { cursor: pointer; user-select: none; }
 th.sort:hover { color: var(--ink); }
+th.sort button { border: 0; padding: 0; background: transparent; color: inherit; font: inherit; text-align: inherit; cursor: pointer; }
 th.sort[aria-sort=ascending], th.sort[aria-sort=descending] { color: var(--ink); }
 th.sort[aria-sort=ascending]::after { content: " ↑"; }
 th.sort[aria-sort=descending]::after { content: " ↓"; }
@@ -800,7 +801,7 @@ svg.chart .dot:hover, svg.chart .dot:focus { fill: var(--first-place); stroke: v
     <div class="band">
       <div class="band-head c-head">
         <h2>Filters</h2>
-        <p class="note">Narrow results and exports. YCN points follows the event-exclusion checkboxes.</p>
+        <p class="note">Narrow results and exports. Solo proficiency leads/follows includes events published as Mixed leads/follows; the category identifies the judged dancer. YCN points follows the event-exclusion checkboxes.</p>
       </div>
       <div class="c-body">
         <div class="filters" id="filters"></div>
@@ -1459,7 +1460,7 @@ function selectPage(page) {
   if (page === "scores" && (!catalogData.length || !scoreHistory)) loadCatalog();
 }
 document.querySelectorAll("[data-page]").forEach(button=>button.addEventListener("click",()=>selectPage(button.dataset.page)));
-for (const [id,values] of [["texasCategory",["Couple-judged","Mixed proficiency – leader judged","Mixed proficiency – follower judged","Solo"]],
+for (const [id,values] of [["texasCategory",["Couple-judged","Solo proficiency leads","Solo proficiency follows","Solo"]],
   ["texasStyle",["International Standard","International Latin","American Smooth","American Rhythm","Social","Country","Cabaret / Show","Other"]],
   ["texasLevel",["Newcomer / Beginner","Pre-Bronze","Bronze","Silver","Gold","Novice","Pre-Champ","Championship","Open","Syllabus / Mixed","Other"]]]) {
   for (const value of values) {
@@ -1523,6 +1524,7 @@ async function loadTexas() {
 }
 $("texasForm").addEventListener("submit",event=>{event.preventDefault();loadTexas();});
 function resetScoreHistory() {
+  scoreSort = {key:'date',dir:-1}; scoreFieldSort = {key:'place',dir:1};
   ++scoreHistorySequence; ++scoreSequence;clearTimeout(scorePollTimer);clearTimeout(scoreDancerTimer);
   if(scoreHistoryJob) fetch('/api/cancel',{method:'POST',headers:{'Content-Type':'application/json','X-Visitor':VISITOR_ID},body:JSON.stringify({id:scoreHistoryJob})}).catch(()=>{});
   scoreHistoryJob=null;scoreHistory=null;scoreSelected=null;
@@ -1610,18 +1612,43 @@ $("scoreDancerForm").addEventListener('submit',async event=>{
     check();
   }catch(error){if(sequence===scoreHistorySequence){$("scoreStatus").textContent=error.message;$("scoreLoad").disabled=false;$("scoreStop").classList.add('hidden');}}
 });
+let scoreSort = {key:'date',dir:-1}, scoreFieldSort = {key:'place',dir:1};
+function sortScoreRows(rows, sort, field = false) {
+  const value = row => sort.key === 'rounds' ? (field ? row.rounds : row.rounds_danced)
+    : sort.key === 'partner' ? row.partner || '(solo)' : row[sort.key];
+  return [...rows].sort((a,b) => {
+    const av=value(a),bv=value(b);
+    if(av==null || av==='') return bv==null || bv==='' ? 0 : 1;
+    if(bv==null || bv==='') return -1;
+    const order = typeof av === 'string' ? av.localeCompare(bv,undefined,{numeric:true,sensitivity:'base'}) : Number(av)-Number(bv);
+    const tie = sort.key === 'date' ? (a.comp||'').localeCompare(b.comp||'')
+      : sort.key === 'place' && !field ? (a.entries??Infinity)-(b.entries??Infinity) : 0;
+    return (order || tie)*sort.dir;
+  });
+}
+function scoreHeaders(columns, sort) {
+  return `<tr>${columns.map(([key,label])=>`<th class="sort" aria-sort="${sort.key===key?(sort.dir>0?'ascending':'descending'):'none'}"><button type="button" data-score-sort="${key}" aria-label="Sort by ${label}">${label}</button></th>`).join('')}</tr>`;
+}
+function bindScoreSort(sort, renderTable) {
+  $("scoreTable").querySelectorAll('[data-score-sort]').forEach(button=>button.addEventListener('click',()=>{
+    const key=button.dataset.scoreSort;
+    sort.dir=sort.key===key?-sort.dir:['date','rounds','made_final'].includes(key)?-1:1;
+    sort.key=key; renderTable();
+  }));
+}
 function scoreVisibleRows() {
   if(!scoreHistory)return [];
   const selected=$("scoreCompetition").value, search=norm($("scoreSearch").value);
   const comps=catalogData.filter(c=>(!selected||String(c.cid)===selected) && norm([c.name,c.date,c.city,c.state].join(' ')).includes(search));
   const ids=new Set(comps.flatMap(c=>c.members.map(String)));
-  return scoreHistory.events.filter(e=>ids.has(String(e.cid))).sort((a,b)=>(b.date||'').localeCompare(a.date||'') || (a.comp||'').localeCompare(b.comp||'') || a.event.localeCompare(b.event));
+  return sortScoreRows(scoreHistory.events.filter(e=>ids.has(String(e.cid))),scoreSort);
 }
 function showDancerCompetition() {
   if(!scoreHistory)return;
   const rows=scoreVisibleRows(),selected=catalogData.find(c=>String(c.cid)===$("scoreCompetition").value);
   $("scoreStatus").textContent=`${scoreHistory.name} · ${selected?selected.name:'All competitions'} · ${rows.length} result entries across ${new Set(rows.map(r=>String(r.cid))).size} provider competition records.`+(scoreHistory.warnings?.length?' '+scoreHistory.warnings.join(' '):'');
-  $("scoreTable").innerHTML=`<table><thead><tr><th>Date / competition</th><th>Event</th><th>Partner</th><th>Place / field</th><th>Final</th><th>Rounds</th></tr></thead><tbody>${rows.map(r=>`<tr><td>${esc(r.date)}<br>${esc(r.comp)}</td><td class="wrap-ok"><a href="${esc(r.url)}" target="_blank" rel="noopener">${esc(r.event)}</a><br>${esc(r.category)}</td><td>${esc(r.partner||'(solo)')}</td><td class="${r.made_final && r.place<=3?'positive':''}">${r.place??'–'} / ${r.entries}</td><td class="${r.made_final?'positive':''}">${r.made_final?'Yes':'No'}</td><td>${r.rounds_danced??'–'}</td></tr>`).join('')}</tbody></table>`;
+  $("scoreTable").innerHTML=`<p class="hint">Click a column heading to sort; click again to reverse. Place / field sorts by placement, then field size. Missing values appear last.</p><table><thead>${scoreHeaders([['date','Date / competition'],['event','Event'],['partner','Partner'],['place','Place / field'],['made_final','Final'],['rounds','Rounds']],scoreSort)}</thead><tbody>${rows.map(r=>`<tr><td>${esc(r.date)}<br>${esc(r.comp)}</td><td class="wrap-ok"><a href="${esc(r.url)}" target="_blank" rel="noopener">${esc(r.event)}</a><br>${esc(r.category)}</td><td>${esc(r.partner||'(solo)')}</td><td class="${r.made_final && r.place<=3?'positive':''}">${r.place??'–'} / ${r.entries}</td><td class="${r.made_final?'positive':''}">${r.made_final?'Yes':'No'}</td><td>${r.rounds_danced??'–'}</td></tr>`).join('')}</tbody></table>`;
+  bindScoreSort(scoreSort,showDancerCompetition);
 }
 function scoreEventKey(event){return JSON.stringify([String(event.cid),String(event.eid)]);}
 function populateScoreEvents() {
@@ -1631,15 +1658,17 @@ function populateScoreEvents() {
 $("scoreCompetition").addEventListener('change',()=>{
   ++scoreSequence;showDancerCompetition();populateScoreEvents();
 });
-$("scoreEvent").addEventListener('change',()=>{
-  ++scoreSequence;const key=$("scoreEvent").value;
+function showScoreEvent() {
+  const key=$("scoreEvent").value;
   if(!key){showDancerCompetition();return;}
   const event=scoreHistory?.events.find(e=>scoreEventKey(e)===key);
   if(!event)return;
   $("scoreStatus").textContent=`${event.event} · ${event.category} · ${event.entries} entries.`;
-  const rows=[...(event.field||[])].sort((a,b)=>(a.place==null)-(b.place==null)||(a.place??0)-(b.place??0)||a.entry.localeCompare(b.entry));
-  $("scoreTable").innerHTML=`<p><a href="${esc(event.url)}" target="_blank" rel="noopener">Official score sheet / judges’ marks</a></p><table><thead><tr><th>Place</th><th>Entry</th><th>Final</th><th>Rounds danced</th></tr></thead><tbody>${rows.map(r=>`<tr><td class="${r.made_final && r.place<=3?'positive':''}">${r.place??'–'}</td><td>${esc(r.entry)}</td><td class="${r.made_final?'positive':''}">${r.made_final?'Yes':'No'}</td><td>${r.rounds??'–'}</td></tr>`).join('')}</tbody></table>`;
-});
+  const rows=sortScoreRows(event.field||[],scoreFieldSort,true);
+  $("scoreTable").innerHTML=`<p><a href="${esc(event.url)}" target="_blank" rel="noopener">Official score sheet / judges’ marks</a></p><p class="hint">Click a column heading to sort; click again to reverse. Missing values appear last.</p><table><thead>${scoreHeaders([['place','Place'],['entry','Entry'],['made_final','Final'],['rounds','Rounds danced']],scoreFieldSort)}</thead><tbody>${rows.map(r=>`<tr><td class="${r.made_final && r.place<=3?'positive':''}">${r.place??'–'}</td><td>${esc(r.entry)}</td><td class="${r.made_final?'positive':''}">${r.made_final?'Yes':'No'}</td><td>${r.rounds??'–'}</td></tr>`).join('')}</tbody></table>`;
+  bindScoreSort(scoreFieldSort,showScoreEvent);
+}
+$("scoreEvent").addEventListener('change',()=>{++scoreSequence;showScoreEvent();});
 
 // ---------------- Upcoming competition ----------------
 let upcomingSequence = 0;
@@ -1919,12 +1948,12 @@ function renderStats(evs) {
 
 function buildFilters() {
   const evs = state.data.events;
-  const CAT_ORDER = ["Couple-judged", "Mixed proficiency – leader judged", "Mixed proficiency – follower judged", "Solo"];
+  const CAT_ORDER = ["Couple-judged", "Solo proficiency leads", "Solo proficiency follows", "Solo"];
   const opts = (key) => {
     const vals = [...new Set(evs.map((e) => key === "partner" ? (e.partner || "(solo)") : e[key]))];
     return key === "category" ? vals.sort((a, b) => CAT_ORDER.indexOf(a) - CAT_ORDER.indexOf(b)) : vals.sort();
   };
-  const defs = [["style", "Style"], ["category", "Category"], ["level", "Level"], ["division", "Division"], ["partner", "Partner"]];
+  const defs = [["style", "Style"], ["category", "Category"], ["level", "Level"], ["partner", "Partner"]];
   $("filters").innerHTML = defs.map(([k, label]) =>
     k === "style" ? `<fieldset class="style-checks"><legend>Style</legend><p class="hint">Select one or more styles. None checked includes all styles.</p><div>${opts(k).map(o => `<label class="check-inline"><input type="checkbox" data-style="${esc(o)}"${(state.filters.style || []).includes(o) ? " checked" : ""}>${esc(o)}</label>`).join("")}</div></fieldset>` :
     `<label>${label}<select data-f="${k}"><option value="">All</option>${opts(k).map((o) => `<option>${esc(o)}</option>`).join("")}</select></label>`
@@ -1997,7 +2026,7 @@ function renderChart(evs) {
 }
 
 function renderBreakdown(evs) {
-  const keys = [["category", "Category"], ["style", "Style"], ["dance", "Dance"], ["level", "Level"], ["division", "Division"], ["partner", "Partner"]];
+  const keys = [["category", "Category"], ["style", "Style"], ["dance", "Dance"], ["level", "Level"], ["partner", "Partner"]];
   if(!keys.some(([key])=>key===state.bdKey)) state.bdKey="category";
   $("bdDanceNote").classList.toggle("hidden", state.bdKey !== "dance");
   $("bdTabs").innerHTML = keys.map(([k, l]) => `<button type="button" data-k="${k}" aria-pressed="${state.bdKey === k}">${l}</button>`).join("");
@@ -2109,7 +2138,7 @@ $("h2hMin").addEventListener("change", () => renderH2H(filtered()));
 const YCN_LEVELS = ["Pre-Bronze", "Bronze", "Silver", "Gold", "Novice", "Pre-Champ", "Champ"];
 const YCN_STYLES = ["International Standard", "International Latin", "American Smooth", "American Rhythm"];
 const YCN_AGES = ["Adult", "Collegiate", "Other"];
-const CAT_LEAD = "Mixed proficiency – leader judged", CAT_FOLLOW = "Mixed proficiency – follower judged";
+const CAT_LEAD = "Solo proficiency leads", CAT_FOLLOW = "Solo proficiency follows";
 const YCN_DANCE_ORDER = ["Waltz", "Tango", "Viennese Waltz", "Foxtrot", "Quickstep", "Samba", "Cha Cha", "Rumba", "Paso Doble", "Jive", "Swing", "Bolero", "Mambo"];
 
 // Which YCN level an event counts at. Clear names are read directly; names that differ between

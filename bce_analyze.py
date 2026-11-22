@@ -260,8 +260,8 @@ AGE_PATTERNS = [
 
 
 CAT_COUPLE = "Couple-judged"
-CAT_LEAD = "Mixed proficiency – leader judged"
-CAT_FOLLOW = "Mixed proficiency – follower judged"
+CAT_LEAD = "Solo proficiency leads"
+CAT_FOLLOW = "Solo proficiency follows"
 CAT_SOLO = "Solo"
 CATEGORIES = [CAT_COUPLE, CAT_LEAD, CAT_FOLLOW, CAT_SOLO]
 LEAD_WORD_RE = re.compile(r"\blead(?:er)?s?\b'?")

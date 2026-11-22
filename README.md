@@ -8,17 +8,19 @@ Ballroom Stats Analyzer uses results from [Ballroom Comp Express](https://ballro
 
 ## Features
 
+- **Sortable competition scores:** click any results column heading to sort, then click again to reverse the order. Missing values stay last.
+- **Judging categories:** Solo proficiency leads and Solo proficiency follows include events published as Mixed leads and Mixed follows, respectively.
 - **Individual or couple leaderboards:** rank published dancers or partnerships by total wins at Texas or U.S. national competitions. Couple rankings count couple-judged wins once per partnership and support couple search suggestions, year, multiple styles, level, and uncontested-event filters.
 - **Individual or couple analysis:** choose Individual for a dancer’s full history, or Couple to analyze only two dancers’ shared entries across BCE and O2CM. Type at least three characters to choose a cached partnership and fill both names, or enter names manually. The second field also suggests known partners. Couple mode starts head-to-head comparisons by opposing couple; mixed-event roles and YCN points remain specific to the first dancer.
 - **Competition history:** view placements, wins, podiums, finals, average placement, and percentage of the field beaten.
-- **Performance trends:** track results over time and compare statistics by category, style, dance, level, division, and partner.
+- **Performance trends:** track results over time and compare statistics by category, style, dance, level, and partner.
 - **Matchup analysis:** explore head-to-head comparisons by dancer or couple, plus opponents placed above and below you.
 - **Compare dancers:** add multiple dancers for side-by-side statistics and a list of shared events with wins, losses, ties, and entries danced together.
 - **Upcoming competitions:** paste a public BCE heat-sheet link to find familiar opponents in your entered rounds, with past meetings by dancer and exact partnership.
 - **Leaderboard:** rank published names by total wins at verified Texas or U.S. national venues, with year, category, style, level, name, and uncontested-event filters.
 - **Competition scores:** browse cached BCE and O2CM competitions, dancer results, and event placements, finals status, and rounds danced, with links to official judges' marks.
 - **Judging categories:** distinguish couple-judged, leader-judged, follower-judged, and solo events.
-- **Filters:** narrow results by category, style, level, division, and partner, and optionally exclude uncontested events.
+- **Filters:** narrow results by category, style, level, and partner, and optionally exclude uncontested events.
 - **YCN points estimates:** review role-specific calculations, event-by-event explanations, and interpretations of ambiguous level names.
 - **Exports:** download event results as CSV or a formatted PDF report.
 
@@ -67,7 +69,7 @@ Leader/follower roles are unverified in this importer, so O2CM results do not cu
 
 ### Filters and uncontested events
 
-Use the filters to focus on a particular category, style, level, division, or partner.
+Use the filters to focus on a particular category, style, level, or partner.
 
 **Exclude uncontested events** removes events with exactly one entry, whether that entry is a couple or an individual. Events with unknown entry counts remain visible. This setting applies to statistics, charts, event lists, exports, and the YCN section.
 
