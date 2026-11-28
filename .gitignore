@@ -44,3 +44,5 @@ mobile/android/
 *.jks
 *.p8
 credentials.json
+supabase/.temp/
+supabase/.branches/

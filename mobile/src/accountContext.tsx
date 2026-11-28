@@ -7,7 +7,13 @@ import React, {
 } from "react";
 import type { Session } from "@supabase/supabase-js";
 import { authConfigured, supabase } from "./client";
-import { getSavedDancer, listenForAuth, saveDancer } from "./auth";
+import {
+  getSavedDancer,
+  listenForAuth,
+  prepareAccountDeletion,
+  saveDancer,
+} from "./auth";
+import type { DeletionConfirmation } from "./deletionFlow";
 import type { SavedDancer } from "./types";
 import { errorMessage } from "./AnalysisScreen";
 interface Account {
@@ -19,6 +25,10 @@ interface Account {
   save: (dancer: SavedDancer) => Promise<void>;
   analysisKey: number;
   reloadAnalysis: () => void;
+  deletionConfirmation: DeletionConfirmation | null;
+  preparingDeletion: boolean;
+  prepareDeletion: () => Promise<void>;
+  cancelDeletion: () => void;
 }
 const Context = createContext<Account | null>(null);
 export function AccountProvider({ children }: { children: React.ReactNode }) {
@@ -33,6 +43,9 @@ export function AccountProvider({ children }: { children: React.ReactNode }) {
   const userId = useRef<string | undefined>(undefined),
     ownerId = session?.user.id;
   const saved = profile?.owner === ownerId ? (profile?.dancer ?? null) : null;
+  const [deletionConfirmation, setDeletionConfirmation] =
+      useState<DeletionConfirmation | null>(null),
+    [preparingDeletion, setPreparingDeletion] = useState(false);
   useEffect(() => {
     if (!supabase) return;
     let active = true;
@@ -55,7 +68,10 @@ export function AccountProvider({ children }: { children: React.ReactNode }) {
     const { data } = supabase.auth.onAuthStateChange((_event, next) => {
       userId.current = next?.user.id;
       setSession(next);
-      if (!next) setProfile(null);
+      if (!next) {
+        setProfile(null);
+        setDeletionConfirmation(null);
+      }
       setReady(true);
     });
     const dispose = listenForAuth((err) => setError(errorMessage(err)));
@@ -85,6 +101,26 @@ export function AccountProvider({ children }: { children: React.ReactNode }) {
     await saveDancer(owner, dancer);
     if (userId.current === owner) setProfile({ owner, dancer });
   }
+  async function prepareDeletion() {
+    if (!session) return;
+    const owner = session.user.id;
+    const provider =
+      session.user.identities?.some((i) => i.provider === "apple") ||
+      session.user.app_metadata.providers?.includes("apple")
+        ? "apple"
+        : "google";
+    setPreparingDeletion(true);
+    setDeletionConfirmation(null);
+    setError("");
+    try {
+      const prepared = await prepareAccountDeletion(owner, provider);
+      if (userId.current === owner) setDeletionConfirmation(prepared);
+    } catch (err) {
+      setError(errorMessage(err));
+    } finally {
+      setPreparingDeletion(false);
+    }
+  }
   return (
     <Context.Provider
       value={{
@@ -96,6 +132,10 @@ export function AccountProvider({ children }: { children: React.ReactNode }) {
         save,
         analysisKey,
         reloadAnalysis: () => setAnalysisKey((value) => value + 1),
+        deletionConfirmation,
+        preparingDeletion,
+        prepareDeletion,
+        cancelDeletion: () => setDeletionConfirmation(null),
       }}
     >
       {children}

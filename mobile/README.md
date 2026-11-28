@@ -10,7 +10,9 @@ The Explore tab embeds the full hosted dashboard for comparisons, proficiency po
 
 **Not yet provisioned:** Supabase project, Google/Apple provider credentials, Expo project/signing, installable IPA/APK, physical-device verification, TestFlight or store listings. JavaScript bundles are not installable applications. Public results work without sign-in; account buttons require the public Supabase configuration below.
 
-**Release blocker:** account deletion and Apple authorization revocation are not implemented. Automatic approval review rejected the proposed provider-refresh-token storage/account-deletion implementation. Obtain explicit approval for its design, implement and test it, and publish privacy/support/deletion information before public store submission. This is a development app, not a store-ready release.
+Account deletion and secure Apple credential storage are implemented: users sign in again, type DELETE, and confirm a short-lived request. Apple authorization is revoked before the app account and saved profile are removed. The credential is encrypted in a server-only Supabase table and is excluded from persistent mobile sessions. See [the account flow](ACCOUNT-DELETION-PROPOSAL.md) and [server deployment instructions](../supabase/README.md).
+
+**Deployment still required:** apply both migrations, deploy the account Edge Function and configure its server secrets before enabling Apple login. Physical-device/provider checks and published privacy/support/deletion information remain prerequisites for store submission. This is a development app, not a store-ready release.
 
 ## Development
 
@@ -40,7 +42,7 @@ Open `http://127.0.0.1:8081`. This local-only server proxies a fixed list of pub
 ## Supabase
 
 1. Create a project in your Supabase account, choosing region and plan deliberately.
-2. Run [`../supabase/migrations/202611270001_mobile_profiles.sql`](../supabase/migrations/202611270001_mobile_profiles.sql) in SQL Editor, or link your project and use `supabase db push` from the repository root. It creates an account-scoped profile table with row-level security; public results are unaffected.
+2. Apply both files in `../supabase/migrations/` in order, or link your project and use `supabase db push` from the repository root. They create account-scoped profiles and server-only encrypted credential/confirmation storage; public results are unaffected.
 3. Fill in `mobile/.env`:
 
    ```dotenv
@@ -57,7 +59,7 @@ Open `http://127.0.0.1:8081`. This local-only server proxies a fixed list of pub
    com.sammoran.ballroomstats://auth/callback
    ```
 
-5. Configure both providers below. Set the same public environment values in your EAS build environment before cloud builds; do not assume an ignored local `.env` is uploaded.
+5. Configure both providers below and follow [account-function deployment](../supabase/README.md). Set the public mobile environment values in your EAS build environment before cloud builds; do not assume an ignored local `.env` is uploaded. Server signing/encryption secrets belong only in Supabase Edge Function secrets.
 
 The app scheme, iOS bundle ID and Android package default to `com.sammoran.ballroomstats`. Verify these identifiers belong to your accounts before registering. If changing them, update `app.json`, `src/auth.ts`, `src/results.ts`, callback tests and the Supabase allow list together.
 
@@ -99,9 +101,9 @@ Apple Developer signing/provisioning is needed for iOS device and TestFlight bui
 ## Verification and release
 
 - Run type checks, mobile tests, Expo dependency checks, `npm audit`, and all-platform bundling.
-- Run `../supabase/tests/bootstrap.sql`, the migration, then `../supabase/tests/profiles.sql` **only in an isolated PostgreSQL database**. Never run the test bootstrap on a real Supabase project.
+- Run `../supabase/tests/bootstrap.sql`, both migrations, then `../supabase/tests/profiles.sql` and `../supabase/tests/account_security.sql` **only in an isolated PostgreSQL database**. Never run the test bootstrap on a real Supabase project. Run Edge Function tests using the commands in `../supabase/README.md`.
 - On physical iOS and Android devices, test guest search/cancellation, both providers, cancelled/denied login, warm/cold callbacks, session restore, sign-out, two-device profile sync, cross-account isolation and offline recovery.
-- Publish reviewed privacy, support and account-deletion information. Complete App Privacy and Google Play Data Safety disclosures for identity and saved-profile data. No advertising/analytics SDK is included.
+- On signed devices, verify typed confirmation, cancellation, wrong-account reauthentication, Apple failure/retry and successful cleanup with dedicated test accounts. Publish reviewed privacy, support and account-deletion information. Complete App Privacy and Google Play Data Safety disclosures for identity, saved-profile data and encrypted Apple revocation credentials. No advertising/analytics SDK is included.
 - Review provider button branding, accessibility, screenshots, app identifiers and signing before release.
 
 `@expo/fingerprint` has a scoped `minimatch` override to avoid a known vulnerable older major. Recheck native fingerprint generation and bundling when updating dependencies.

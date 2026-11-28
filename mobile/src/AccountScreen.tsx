@@ -10,25 +10,67 @@ import {
 import * as AppleAuthentication from "expo-apple-authentication";
 import type { Session } from "@supabase/supabase-js";
 import { authConfigured } from "./client";
-import { signIn, signOut } from "./auth";
+import { deleteConfirmedAccount, signIn, signOut } from "./auth";
+import type { DeletionConfirmation } from "./accountService";
 import type { SavedDancer } from "./types";
 import { errorMessage } from "./AnalysisScreen";
 import { API_URL } from "./api";
-import { Button, Heading, Note, s, usePalette } from "./ui";
+import { Button, Heading, Input, Note, s, usePalette } from "./ui";
 export default function AccountScreen({
   session,
   saved,
   ready,
   onUse,
+  confirmation,
+  preparing,
+  onPrepareDeletion,
+  onCancelDeletion,
 }: {
   session: Session | null;
   saved: SavedDancer | null;
   ready: boolean;
   onUse: () => void;
+  confirmation: DeletionConfirmation | null;
+  preparing: boolean;
+  onPrepareDeletion: () => Promise<void>;
+  onCancelDeletion: () => void;
 }) {
   const c = usePalette(),
-    [busy, setBusy] = useState(false),
-    [error, setError] = useState("");
+    [working, setBusy] = useState(false),
+    [error, setError] = useState(""),
+    [typed, setTyped] = useState("");
+  const busy = working || preparing;
+  const activeConfirmation =
+    confirmation?.userId === session?.user.id ? confirmation : null;
+  async function prepareDeletion() {
+    setBusy(true);
+    setError("");
+    onCancelDeletion();
+    setTyped("");
+    try {
+      await onPrepareDeletion();
+    } catch (err) {
+      setError(errorMessage(err));
+    } finally {
+      setBusy(false);
+    }
+  }
+  async function finishDeletion() {
+    if (!activeConfirmation) return;
+    setBusy(true);
+    setError("");
+    try {
+      await deleteConfirmedAccount(activeConfirmation, typed);
+      onCancelDeletion();
+      setTyped("");
+    } catch (err) {
+      setError(errorMessage(err));
+      onCancelDeletion();
+      setTyped("");
+    } finally {
+      setBusy(false);
+    }
+  }
   async function login(provider: "google" | "apple") {
     setBusy(true);
     setError("");
@@ -71,6 +113,50 @@ export default function AccountScreen({
                 .finally(() => setBusy(false));
             }}
           />
+          <Text style={[s.section, { color: c.red }]}>Delete account</Text>
+          <Note>
+            Deletion permanently removes your app account and saved dancer
+            profile. Apple authorization is revoked first. Public competition
+            results and your Google/Apple account remain unchanged.
+          </Note>
+          {activeConfirmation ? (
+            <>
+              <Note error>
+                This cannot be undone. Type DELETE below, then confirm within
+                five minutes.
+              </Note>
+              <Input
+                accessibilityLabel="Type DELETE to confirm account deletion"
+                placeholder="DELETE"
+                autoCapitalize="characters"
+                value={typed}
+                editable={!busy}
+                onChangeText={setTyped}
+              />
+              <Button
+                title={busy ? "Deleting…" : "Permanently delete my account"}
+                disabled={busy || typed !== "DELETE"}
+                onPress={finishDeletion}
+              />
+              <View style={{ height: 12 }} />
+              <Button
+                title="Cancel deletion"
+                quiet
+                disabled={busy}
+                onPress={() => {
+                  onCancelDeletion();
+                  setTyped("");
+                }}
+              />
+            </>
+          ) : (
+            <Button
+              title={busy ? "Working…" : "Verify identity to delete account"}
+              quiet
+              disabled={busy}
+              onPress={prepareDeletion}
+            />
+          )}
         </>
       ) : (
         <>
@@ -125,7 +211,9 @@ export default function AccountScreen({
       <Note>
         Competition results are public. Your account stores your login identity
         and your chosen dancer name/ID. Public results may include people with
-        identical names.
+        identical names. For Apple sign-in, we securely retain an authorization
+        credential so we can revoke the app’s access when you delete your
+        account.
       </Note>
       <Button
         title="Visit Ballroom Stats Analyzer"

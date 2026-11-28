@@ -1,8 +1,8 @@
-# Account deletion and Apple revocation — approval pending
+# Account deletion and Apple revocation — approved implementation
 
-This is a reviewable design, not implemented behavior. The current app does not forward or persist Apple/Google provider refresh tokens; its storage adapter excludes them from persisted app sessions.
+Approved by the app owner on November 27, 2026 and implemented in the mobile app and Supabase account Edge Function. Live deployment and provider/device testing still require the owner's project and signing credentials. Provider tokens remain excluded from persistent mobile sessions; Apple credentials are sent only to the owner's authenticated Supabase function for validation and encrypted storage.
 
-Proposed operation, requiring explicit approval:
+Implemented operation:
 
 1. After Apple OAuth, transmit Apple's provider refresh token over HTTPS to an authenticated **Supabase Edge Function in the app owner's Supabase project**. Use it solely to support authorization revocation when the app user requests account deletion.
 2. Verify the caller's Supabase JWT with the auth service. Exchange/validate the Apple token server-side and verify that Apple's subject matches the Apple identity attached to that caller. A different user's token must never be accepted.
@@ -13,4 +13,4 @@ Proposed operation, requiring explicit approval:
 
 Risks: this adds persistent storage of a sensitive provider credential to the owner's Supabase backend and an irreversible account-deletion operation when the app user explicitly confirms it. The provider token could be misused if that backend's secrets were compromised. Administrative credentials must not be embedded in the app.
 
-Automatic approval review rejected the initial code proposal because provider-token handling and account deletion had not been explicitly approved. Approval of this design would authorize implementing these controls; no actual user account would be deleted as part of development or testing.
+The implementation adds five-minute, session-bound, single-use confirmations; per-user request limits; database deletion leases; AES-256-GCM encryption bound to the user and Apple subject; server-validated fresh OAuth authentication; and a revocation receipt for safe retry after partial failure. Tests use synthetic accounts, generated signing keys and mocked Apple HTTP responses. See `../supabase/README.md` for deployment and key rotation.

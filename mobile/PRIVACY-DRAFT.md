@@ -10,4 +10,8 @@ A signed-in user may save a public dancer name and optional BCE ID to their acco
 
 No advertising or analytics SDK is included. Hosting providers and Supabase may maintain operational/security logs. This draft does not promise that no such logs exist.
 
-Account deletion and provider revocation remain a release blocker. Do not publish this draft as a claim that those features already exist.
+For Apple sign-in, an authorization credential is sent over HTTPS to the app owner's Supabase account-management function. Its Apple identity is checked and the credential is encrypted in server-only database storage. Encryption/signing keys are kept outside the database in server secrets. The app does not persist provider tokens in its mobile session storage.
+
+Signed-in users can request deletion in Account settings after fresh sign-in and typing DELETE. The server revokes Apple authorization first, then permanently removes the app account, saved profile and private credential records. Public competition results remain public. If revocation fails, the account is retained for retry; if revocation succeeds but account removal fails, the encrypted credential is erased and a private revocation receipt supports retry.
+
+Operational logs and encrypted records in hosting backups may remain under the provider's retention policy. Set and disclose actual retention periods and support/deletion contact information before publishing this notice. Real provider/device verification is required after the Supabase account-management function is deployed.

@@ -9,6 +9,10 @@ export default function AccountRoute() {
       session={a.session}
       saved={a.saved}
       ready={a.ready}
+      confirmation={a.deletionConfirmation}
+      preparing={a.preparingDeletion}
+      onPrepareDeletion={a.prepareDeletion}
+      onCancelDeletion={a.cancelDeletion}
       onUse={() => {
         a.reloadAnalysis();
         router.navigate("/");

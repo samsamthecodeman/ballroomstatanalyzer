@@ -1,0 +1,4 @@
+project_id = "ballroom-stats-analyzer"
+
+[functions.account]
+verify_jwt = true

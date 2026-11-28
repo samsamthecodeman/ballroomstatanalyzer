@@ -6,7 +6,7 @@ import { Button, Heading, Note, s } from "../../ui";
 export default function Callback() {
   const account = useAccount();
   useEffect(() => {
-    if (account.session) router.replace("/");
+    if (account.session) router.replace("/account");
   }, [account.session]);
   return (
     <View style={s.screen}>
