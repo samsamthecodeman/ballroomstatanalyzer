@@ -10,7 +10,8 @@ This backend is separate from the hosted Python results service. The account fun
    ```powershell
    npx supabase@latest login
    npx supabase@latest link --project-ref YOUR_PROJECT_REF
-   npx supabase@latest db push
+   npx supabase@latest db push --remote --dry-run
+   npx supabase@latest db push --remote
    ```
 
 3. Copy `functions/.env.example` to `functions/.env.local` and replace the placeholders **locally**. This file is ignored by Git. Do not share its values in chat or embed them in `EXPO_PUBLIC_` configuration.

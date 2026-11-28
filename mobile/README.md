@@ -8,11 +8,11 @@ Implemented: native individual/couple search and three-character suggestions; co
 
 The Explore tab embeds the full hosted dashboard for comparisons, proficiency points and upcoming schedules. CSV/PDF downloads open the website in the system browser; the search may need to be repeated because web and native sessions are independent.
 
-**Not yet provisioned:** Supabase project, Google/Apple provider credentials, Expo project/signing, installable IPA/APK, physical-device verification, TestFlight or store listings. JavaScript bundles are not installable applications. Public results work without sign-in; account buttons require the public Supabase configuration below.
+**Deployment (November 27, 2026):** the [Supabase project](https://supabase.com/dashboard/project/ozdvkrmawjjvuuzcnaqo) has both migrations and the authenticated account Edge Function deployed. The app callback URL and encrypted-token keyring are configured. The [Expo project](https://expo.dev/accounts/samsamthecodeman/projects/ballroom-stats-analyzer) is linked, with public configuration in its development, preview and production environments and managed Android signing. Public results work without sign-in.
 
 Account deletion and secure Apple credential storage are implemented: users sign in again, type DELETE, and confirm a short-lived request. Apple authorization is revoked before the app account and saved profile are removed. The credential is encrypted in a server-only Supabase table and is excluded from persistent mobile sessions. See [the account flow](ACCOUNT-DELETION-PROPOSAL.md) and [server deployment instructions](../supabase/README.md).
 
-**Deployment still required:** apply both migrations, deploy the account Edge Function and configure its server secrets before enabling Apple login. Physical-device/provider checks and published privacy/support/deletion information remain prerequisites for store submission. This is a development app, not a store-ready release.
+**Still required:** Google and Apple provider credentials, Apple signing/revocation secrets, iOS provisioning, physical-device/provider verification, published privacy/support/deletion information, and store listings. Both OAuth providers were disabled when checked. Configure the Apple function secrets before enabling Apple login. This is a development app, not a store-ready release.
 
 ## Development
 
@@ -42,7 +42,7 @@ Open `http://127.0.0.1:8081`. This local-only server proxies a fixed list of pub
 ## Supabase
 
 1. Create a project in your Supabase account, choosing region and plan deliberately.
-2. Apply both files in `../supabase/migrations/` in order, or link your project and use `supabase db push` from the repository root. They create account-scoped profiles and server-only encrypted credential/confirmation storage; public results are unaffected.
+2. Apply both files in `../supabase/migrations/` in order, or link your project and use `supabase db push --remote` from the repository root. They create account-scoped profiles and server-only encrypted credential/confirmation storage; public results are unaffected.
 3. Fill in `mobile/.env`:
 
    ```dotenv
@@ -70,6 +70,8 @@ Configure the OAuth consent screen in Google Cloud, including support contact, p
 ```text
 https://YOUR-PROJECT.supabase.co/auth/v1/callback
 ```
+
+For the deployed project, use `https://ozdvkrmawjjvuuzcnaqo.supabase.co/auth/v1/callback`.
 
 Enable Google in Supabase Authentication Providers and enter the client ID and secret **there**, not in the app. Test both native platforms. This implementation uses browser OAuth, not the native Google SDK.
 

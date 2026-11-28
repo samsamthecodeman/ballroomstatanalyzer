@@ -1,4 +1,8 @@
 project_id = "ballroom-stats-analyzer"
 
+[auth]
+site_url = "https://bsa.sam-moran.com"
+additional_redirect_urls = ["com.sammoran.ballroomstats://auth/callback"]
+
 [functions.account]
 verify_jwt = true

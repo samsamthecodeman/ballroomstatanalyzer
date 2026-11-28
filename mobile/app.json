@@ -33,6 +33,17 @@
       "expo-splash-screen",
       "expo-font"
     ],
-    "scheme": "com.sammoran.ballroomstats"
+    "scheme": "com.sammoran.ballroomstats",
+    "extra": {
+      "router": {
+        "asyncRoutes": {
+          "web": true
+        }
+      },
+      "eas": {
+        "projectId": "79315ff8-8f96-4215-9cab-1fedbe44e421"
+      }
+    },
+    "owner": "samsamthecodeman"
   }
 }
