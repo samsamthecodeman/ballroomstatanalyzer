@@ -1,0 +1,38 @@
+{
+  "expo": {
+    "name": "Ballroom Stats Analyzer",
+    "slug": "ballroom-stats-analyzer",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "automatic",
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.sammoran.ballroomstats",
+      "usesAppleSignIn": true,
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
+    },
+    "android": {
+      "package": "com.sammoran.ballroomstats",
+      "predictiveBackGestureEnabled": true,
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/icon.png",
+        "backgroundColor": "#ffffff"
+      }
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "plugins": [
+      "expo-secure-store",
+      "expo-web-browser",
+      "expo-apple-authentication",
+      "expo-router",
+      "expo-splash-screen",
+      "expo-font"
+    ],
+    "scheme": "com.sammoran.ballroomstats"
+  }
+}

@@ -10,3 +10,5 @@ ddns/
 .git/
 tmp/
 output/
+mobile/
+supabase/

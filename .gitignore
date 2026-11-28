@@ -29,3 +29,18 @@ htmlcov/
 .vscode/
 .DS_Store
 Thumbs.db
+
+# Mobile dependencies, builds, signing credentials, and local Expo state
+node_modules/
+.expo/
+mobile/dist/
+mobile/dist-preview/
+mobile/ios/
+mobile/android/
+*.ipa
+*.aab
+*.apk
+*.keystore
+*.jks
+*.p8
+credentials.json

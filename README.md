@@ -8,6 +8,8 @@ Ballroom Stats Analyzer uses results from [Ballroom Comp Express](https://ballro
 
 ## Features
 
+An iOS/Android client is being prepared in [`mobile/`](mobile/README.md), including Supabase Google/Apple sign-in and saved dancer profiles. See its setup guide for credentials, testing, signing and release blockers; no app-store release is available yet.
+
 - **Sortable competition scores:** click any results column heading to sort, then click again to reverse the order. Missing values stay last.
 - **Judging categories:** Solo proficiency leads and Solo proficiency follows include events published as Mixed leads and Mixed follows, respectively.
 - **Individual or couple leaderboards:** rank published dancers or partnerships by total wins at Texas or U.S. national competitions. Couple rankings count couple-judged wins once per partnership and support couple search suggestions, year, multiple styles, level, and uncontested-event filters.
